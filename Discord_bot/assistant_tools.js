@@ -8,6 +8,7 @@ const ADMIN_ACTIONS = new Set([
   'create_role',
   'create_text_channel',
   'delete_messages',
+  'diagnose_permissions',
   'kick_member',
   'list_channels',
   'remove_role',
@@ -38,6 +39,34 @@ function getActionType(action) {
 
 function isDangerousAction(action) {
   return DANGEROUS_ACTIONS.has(getActionType(action));
+}
+
+const PERMISSION_CHECKS = [
+  ['ViewChannel', PermissionsBitField.Flags.ViewChannel],
+  ['SendMessages', PermissionsBitField.Flags.SendMessages],
+  ['ReadMessageHistory', PermissionsBitField.Flags.ReadMessageHistory],
+  ['UseExternalEmojis', PermissionsBitField.Flags.UseExternalEmojis],
+  ['EmbedLinks', PermissionsBitField.Flags.EmbedLinks],
+  ['AttachFiles', PermissionsBitField.Flags.AttachFiles],
+  ['ManageMessages', PermissionsBitField.Flags.ManageMessages],
+  ['ManageChannels', PermissionsBitField.Flags.ManageChannels],
+  ['ManageRoles', PermissionsBitField.Flags.ManageRoles],
+  ['KickMembers', PermissionsBitField.Flags.KickMembers],
+  ['BanMembers', PermissionsBitField.Flags.BanMembers],
+  ['ModerateMembers', PermissionsBitField.Flags.ModerateMembers],
+];
+
+function getMissingPermissions(permissions, checks = PERMISSION_CHECKS) {
+  if (!permissions) return checks.map(([name]) => name);
+  return checks
+    .filter(([, flag]) => !permissions.has(flag))
+    .map(([name]) => name);
+}
+
+function formatPermissionLine(label, missing) {
+  return missing.length
+    ? `- ${label}: thiếu ${missing.join(', ')}`
+    : `- ${label}: đủ quyền cần thiết`;
 }
 
 function isAdminMessage(message) {
@@ -144,6 +173,93 @@ async function resolveGuild(message) {
   return guild;
 }
 
+async function diagnoseBotPermissions(message, args) {
+  const guild = await resolveGuild(message);
+  if (!guild) return 'Không thể kết nối tới server để kiểm tra quyền.';
+
+  const botMember = guild.members.me
+    || await guild.members.fetchMe().catch(() => null)
+    || await guild.members.fetch(message.client.user.id).catch(() => null);
+  if (!botMember) return 'Không tìm thấy bot member trong server này.';
+
+  const requestedChannel = args.channel || args.channel_name || args.channelId;
+  const targetChannel = requestedChannel
+    ? await findChannel(guild, requestedChannel)
+    : message.guild
+      ? message.channel
+      : guild.systemChannel || guild.channels.cache.find(channel => channel.isTextBased?.());
+
+  const guildMissing = getMissingPermissions(botMember.permissions);
+  const channelMissing = targetChannel?.permissionsFor
+    ? getMissingPermissions(targetChannel.permissionsFor(botMember), [
+      ['ViewChannel', PermissionsBitField.Flags.ViewChannel],
+      ['SendMessages', PermissionsBitField.Flags.SendMessages],
+      ['ReadMessageHistory', PermissionsBitField.Flags.ReadMessageHistory],
+      ['EmbedLinks', PermissionsBitField.Flags.EmbedLinks],
+      ['AttachFiles', PermissionsBitField.Flags.AttachFiles],
+      ['ManageMessages', PermissionsBitField.Flags.ManageMessages],
+    ])
+    : ['Không đọc được permission của kênh'];
+
+  const textChannels = guild.channels.cache
+    .filter(channel => channel.isTextBased?.())
+    .map(channel => {
+      const permissions = channel.permissionsFor?.(botMember);
+      return {
+        channel,
+        canView: Boolean(permissions?.has(PermissionsBitField.Flags.ViewChannel)),
+        canSend: Boolean(permissions?.has(PermissionsBitField.Flags.SendMessages)),
+        canReadHistory: Boolean(permissions?.has(PermissionsBitField.Flags.ReadMessageHistory)),
+      };
+    });
+  const visibleTextChannels = textChannels.filter(item => item.canView).length;
+  const blockedChannels = textChannels
+    .filter(item => !item.canView || !item.canSend || !item.canReadHistory)
+    .slice(0, 12)
+    .map(item => {
+      const missing = [];
+      if (!item.canView) missing.push('ViewChannel');
+      if (!item.canSend) missing.push('SendMessages');
+      if (!item.canReadHistory) missing.push('ReadMessageHistory');
+      return `  - #${item.channel.name}: thiếu ${missing.join(', ')}`;
+    });
+
+  const botHighest = botMember.roles.highest;
+  const manageableRoles = guild.roles.cache
+    .filter(role => role.id !== guild.id && role.position < botHighest.position)
+    .size;
+  const unmanageableRoles = guild.roles.cache
+    .filter(role => role.id !== guild.id && role.position >= botHighest.position)
+    .size;
+  const recommendedPermissions = new PermissionsBitField([
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.SendMessages,
+    PermissionsBitField.Flags.ReadMessageHistory,
+    PermissionsBitField.Flags.EmbedLinks,
+    PermissionsBitField.Flags.AttachFiles,
+    PermissionsBitField.Flags.ManageMessages,
+    PermissionsBitField.Flags.ManageChannels,
+    PermissionsBitField.Flags.ManageRoles,
+    PermissionsBitField.Flags.KickMembers,
+    PermissionsBitField.Flags.BanMembers,
+    PermissionsBitField.Flags.ModerateMembers,
+  ]);
+  const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${message.client.user.id}&scope=bot%20applications.commands&permissions=${recommendedPermissions.bitfield.toString()}`;
+
+  return [
+    `Chẩn đoán quyền cho ${message.client.user.tag} trong server "${guild.name}":`,
+    formatPermissionLine('Quyền cấp server', guildMissing),
+    targetChannel
+      ? formatPermissionLine(`Quyền trong #${targetChannel.name}`, channelMissing)
+      : '- Quyền kênh: không tìm thấy kênh cần kiểm tra',
+    `- Kênh text bot thấy được: ${visibleTextChannels}/${textChannels.length}`,
+    `- Role cao nhất của bot: ${botHighest.name} (quản lý được ${manageableRoles} role, chưa quản lý được ${unmanageableRoles} role ngang/cao hơn)`,
+    blockedChannels.length ? `- Một số kênh còn thiếu quyền:\n${blockedChannels.join('\n')}` : '- Các kênh text đã kiểm tra không thấy thiếu quyền đọc/gửi cơ bản.',
+    `- Link mời lại với bộ quyền khuyến nghị: ${inviteUrl}`,
+    'Lưu ý: để gán/gỡ role, role của bot phải nằm cao hơn role mục tiêu trong Server Settings > Roles.',
+  ].join('\n');
+}
+
 async function executeAssistantActions({ message, actions = [], context }) {
   const results = [];
   const canAdmin = isAdminMessage(message);
@@ -160,7 +276,9 @@ async function executeAssistantActions({ message, actions = [], context }) {
     }
 
     try {
-      if (type === 'send_message') {
+      if (type === 'diagnose_permissions') {
+        results.push(await diagnoseBotPermissions(message, args));
+      } else if (type === 'send_message') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
         if (!channel || !channel.isTextBased()) {
           results.push('Không tìm thấy kênh để gửi tin nhắn.');

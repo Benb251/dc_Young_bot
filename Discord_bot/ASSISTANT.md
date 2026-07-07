@@ -45,6 +45,7 @@ Assistant safety:
 - `summarize_channel`: summarize recent messages from a channel.
 - `delete_messages`: delete recent messages in the current channel.
 - `list_channels`: list visible text/forum channels.
+- `diagnose_permissions`: report missing server/channel permissions, role hierarchy limits, and an invite URL with recommended permissions.
 - `create_text_channel`: create a text channel, optionally under a category.
 - `rename_channel`: rename a channel.
 - `set_channel_topic`: update a text channel topic.

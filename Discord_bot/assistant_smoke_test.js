@@ -30,7 +30,11 @@ async function main() {
     throw new Error('memory recall failed');
   }
 
-  if (!isDangerousAction({ type: 'ban_member' }) || isDangerousAction({ type: 'recall_memory' })) {
+  if (
+    !isDangerousAction({ type: 'ban_member' })
+    || isDangerousAction({ type: 'recall_memory' })
+    || isDangerousAction({ type: 'diagnose_permissions' })
+  ) {
     throw new Error('dangerous action classification failed');
   }
 

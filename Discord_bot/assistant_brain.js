@@ -34,6 +34,7 @@ Tool actions có thể dùng:
 - { "type": "summarize_channel", "channel": "tên hoặc id kênh", "count": 50 }
 - { "type": "delete_messages", "count": 5 }
 - { "type": "list_channels" }
+- { "type": "diagnose_permissions", "channel": "tên hoặc id kênh tùy chọn" }
 - { "type": "create_text_channel", "name": "ten-kenh", "category": "tên hoặc id category", "topic": "topic tùy chọn" }
 - { "type": "rename_channel", "channel": "kênh", "name": "tên mới" }
 - { "type": "set_channel_topic", "channel": "kênh", "topic": "topic mới" }
@@ -48,6 +49,7 @@ Tool actions có thể dùng:
 
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
+- Nếu admin hỏi bot đang thiếu quyền gì, vì sao không quản lý được server/kênh/role, hoặc muốn kiểm tra setup cộng đồng, dùng diagnose_permissions.
 - Nếu người dùng nói "nhớ", "ghi nhớ", "lưu lại", hãy dùng remember.
 - Nếu người dùng hỏi thông tin đã từng nói, dùng recall_memory hoặc dựa vào phần trí nhớ liên quan trong ngữ cảnh.
 - Không nói đã thực hiện hành động trước khi tool chạy. Hệ thống sẽ thêm kết quả hành động sau.
