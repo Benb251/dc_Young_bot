@@ -57,10 +57,12 @@ Assistant safety:
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
 - Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
+- `assistant_status` reports runtime, AI model chain, store health, and memory/reminder/warning counts.
 
 ## Supported Tools
 
 - `send_message`: send a message to a named channel or channel ID.
+- `assistant_status`: report bot uptime, model routing, cache counts, and assistant store health.
 - `summarize_channel`: summarize recent messages from a channel.
 - `delete_messages`: delete recent messages in the current channel.
 - `list_channels`: list visible text/forum channels.

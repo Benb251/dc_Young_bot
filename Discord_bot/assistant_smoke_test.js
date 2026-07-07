@@ -4,8 +4,10 @@ const path = require('path');
 
 const tempMemoryPath = path.join(os.tmpdir(), `assistant-memory-${Date.now()}.json`);
 const tempWarningPath = path.join(os.tmpdir(), `assistant-warnings-${Date.now()}.json`);
+const tempReminderPath = path.join(os.tmpdir(), `assistant-reminders-${Date.now()}.json`);
 process.env.ASSISTANT_MEMORY_FILE = tempMemoryPath;
 process.env.ASSISTANT_WARNING_FILE = tempWarningPath;
+process.env.ASSISTANT_REMINDER_FILE = tempReminderPath;
 
 const { extractJson } = require('./assistant_brain.js');
 const memory = require('./assistant_memory.js');
@@ -14,6 +16,7 @@ const { isDangerousAction } = require('./assistant_tools.js');
 const autoMemory = require('./assistant_auto_memory.js');
 const reminders = require('./assistant_reminders.js');
 const aiHelper = require('./ai_helper.js');
+const status = require('./assistant_status.js');
 const warnings = require('./assistant_warnings.js');
 
 async function main() {
@@ -143,13 +146,26 @@ async function main() {
     throw new Error('warning clearing failed');
   }
 
+  const assistantStatus = await status.collectAssistantStatus({
+    user: { tag: 'TestBot#0001' },
+    guilds: { cache: { size: 1 } },
+    channels: { cache: { size: 2 } },
+    ws: { ping: 12 },
+  });
+  const statusText = status.formatAssistantStatus(assistantStatus);
+  if (!statusText.includes('TestBot#0001') || !statusText.includes('Memory:')) {
+    throw new Error('assistant status formatting failed');
+  }
+
   await fs.rm(tempMemoryPath, { force: true });
+  await fs.rm(tempReminderPath, { force: true });
   await fs.rm(tempWarningPath, { force: true });
   console.log('assistant smoke test passed');
 }
 
 main().catch(async error => {
   await fs.rm(tempMemoryPath, { force: true }).catch(() => null);
+  await fs.rm(tempReminderPath, { force: true }).catch(() => null);
   await fs.rm(tempWarningPath, { force: true }).catch(() => null);
   console.error(error);
   process.exit(1);

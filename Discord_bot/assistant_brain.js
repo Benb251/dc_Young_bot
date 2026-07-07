@@ -35,6 +35,7 @@ Tool actions có thể dùng:
 - { "type": "summarize_channel", "channel": "tên hoặc id kênh", "count": 50 }
 - { "type": "delete_messages", "count": 5 }
 - { "type": "list_channels" }
+- { "type": "assistant_status" }
 - { "type": "diagnose_permissions", "channel": "tên hoặc id kênh tùy chọn" }
 - { "type": "inspect_server", "limit": 30, "roleLimit": 20 }
 - { "type": "search_messages", "query": "từ khóa", "channel": "tên hoặc id kênh tùy chọn", "count": 50, "limit": 8, "all": false }
@@ -63,6 +64,7 @@ Tool actions có thể dùng:
 
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
+- Nếu admin hỏi bot đang chạy ổn không, đang dùng model gì, uptime, store memory/reminder/warning, health check, dùng assistant_status.
 - Nếu admin hỏi bot đang thiếu quyền gì, vì sao không quản lý được server/kênh/role, hoặc muốn kiểm tra setup cộng đồng, dùng diagnose_permissions.
 - Nếu admin hỏi server đang có cấu trúc gì, có những kênh/role nào, hoặc cần bot tự hiểu cộng đồng trước khi đề xuất, dùng inspect_server.
 - Nếu admin hỏi "ai đã nói gì", "tìm lại", "lục chat", hoặc cần bằng chứng từ tin nhắn gần đây, dùng search_messages.

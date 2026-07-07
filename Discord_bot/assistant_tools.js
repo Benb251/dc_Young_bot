@@ -7,10 +7,12 @@ const {
   rememberFact,
 } = require('./assistant_memory.js');
 const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
+const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_status.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 
 const ADMIN_ACTIONS = new Set([
   'assign_role',
+  'assistant_status',
   'ban_member',
   'create_role',
   'create_text_channel',
@@ -425,6 +427,9 @@ async function executeAssistantActions({ message, actions = [], context }) {
     try {
       if (type === 'diagnose_permissions') {
         results.push(await diagnoseBotPermissions(message, args));
+      } else if (type === 'assistant_status') {
+        const status = await collectAssistantStatus(message.client);
+        results.push(formatAssistantStatus(status));
       } else if (type === 'inspect_server') {
         results.push(await inspectServer(message, args));
       } else if (type === 'search_messages') {
