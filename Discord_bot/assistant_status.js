@@ -6,6 +6,7 @@ function getStorePaths() {
   return {
     memory: process.env.ASSISTANT_MEMORY_FILE || path.join(__dirname, 'data', 'assistant_memory.json'),
     reminders: process.env.ASSISTANT_REMINDER_FILE || path.join(__dirname, 'data', 'assistant_reminders.json'),
+    tasks: process.env.ASSISTANT_TASK_FILE || path.join(__dirname, 'data', 'assistant_tasks.json'),
     warnings: process.env.ASSISTANT_WARNING_FILE || path.join(__dirname, 'data', 'assistant_warnings.json'),
   };
 }
@@ -45,13 +46,15 @@ function countBy(items, getter) {
 
 async function collectAssistantStatus(client) {
   const paths = getStorePaths();
-  const [memory, reminders, warnings] = await Promise.all([
+  const [memory, reminders, tasks, warnings] = await Promise.all([
     readJsonStore(paths.memory, { facts: [], conversations: {} }),
     readJsonStore(paths.reminders, { reminders: [] }),
+    readJsonStore(paths.tasks, { tasks: [] }),
     readJsonStore(paths.warnings, { warnings: [] }),
   ]);
 
   const reminderItems = Array.isArray(reminders.data.reminders) ? reminders.data.reminders : [];
+  const taskItems = Array.isArray(tasks.data.tasks) ? tasks.data.tasks : [];
   const warningItems = Array.isArray(warnings.data.warnings) ? warnings.data.warnings : [];
   const facts = Array.isArray(memory.data.facts) ? memory.data.facts : [];
   const conversations = memory.data.conversations || {};
@@ -90,6 +93,14 @@ async function collectAssistantStatus(client) {
       byStatus: countBy(reminderItems, reminder => reminder.status),
       error: reminders.error || null,
     },
+    tasks: {
+      path: paths.tasks,
+      exists: tasks.exists,
+      updatedAt: tasks.updatedAt || null,
+      total: taskItems.length,
+      byStatus: countBy(taskItems, task => task.status),
+      error: tasks.error || null,
+    },
     warnings: {
       path: paths.warnings,
       exists: warnings.exists,
@@ -111,8 +122,9 @@ function formatAssistantStatus(status) {
     `- AI timeout/retries: ${status.ai.timeoutMs}ms / ${status.ai.maxRetries}`,
     `- Memory: ${status.memory.facts} facts, ${status.memory.conversations} conversations, scopes=${JSON.stringify(status.memory.factsByScope)}`,
     `- Reminders: ${status.reminders.total}, statuses=${JSON.stringify(status.reminders.byStatus)}`,
+    `- Tasks: ${status.tasks.total}, statuses=${JSON.stringify(status.tasks.byStatus)}`,
     `- Warnings: ${status.warnings.total}, statuses=${JSON.stringify(status.warnings.byStatus)}`,
-    `- Stores exist: memory=${status.memory.exists}, reminders=${status.reminders.exists}, warnings=${status.warnings.exists}`,
+    `- Stores exist: memory=${status.memory.exists}, reminders=${status.reminders.exists}, tasks=${status.tasks.exists}, warnings=${status.warnings.exists}`,
   ].join('\n');
 }
 

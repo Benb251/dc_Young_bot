@@ -34,6 +34,11 @@ Assistant reminders:
 - `ASSISTANT_REMINDER_POLL_MS`, default `30000`
 - `ASSISTANT_MAX_REMINDERS`, default `500`
 
+Assistant tasks:
+
+- `ASSISTANT_TASK_FILE`, default `Discord_bot/data/assistant_tasks.json`
+- `ASSISTANT_MAX_TASKS`, default `500`
+
 Assistant moderation:
 
 - `ASSISTANT_WARNING_FILE`, default `Discord_bot/data/assistant_warnings.json`
@@ -73,6 +78,9 @@ Assistant safety:
 - `schedule_reminder`: schedule a future reminder in the current channel or DM.
 - `list_reminders`: list pending reminders for the current admin/user.
 - `cancel_reminder`: cancel a pending reminder by ID prefix.
+- `create_task`: create a persistent server/user/channel todo item.
+- `list_tasks`: list open, done, cancelled, or all tasks.
+- `complete_task` / `cancel_task`: update a task by ID prefix.
 - `create_text_channel`: create a text channel, optionally under a category.
 - `create_thread`: create a thread in a text/announcement channel or a post in a forum channel.
 - `rename_channel`: rename a channel.

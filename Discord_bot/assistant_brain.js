@@ -43,6 +43,10 @@ Tool actions có thể dùng:
 - { "type": "schedule_reminder", "content": "nội dung cần nhắc", "when": "20 phút|2h|2026-07-09T10:00:00+07:00" }
 - { "type": "list_reminders", "limit": 10 }
 - { "type": "cancel_reminder", "id": "mã reminder" }
+- { "type": "create_task", "title": "việc cần làm", "details": "mô tả tùy chọn", "priority": "low|normal|high|urgent", "scope": "guild|channel|user|global", "tags": ["tag"] }
+- { "type": "list_tasks", "status": "open|done|cancelled|all", "query": "từ khóa tùy chọn", "limit": 12 }
+- { "type": "complete_task", "id": "mã task" }
+- { "type": "cancel_task", "id": "mã task" }
 - { "type": "create_text_channel", "name": "ten-kenh", "category": "tên hoặc id category", "topic": "topic tùy chọn" }
 - { "type": "create_thread", "channel": "kênh text/forum", "name": "tên thread/post", "content": "nội dung mở đầu", "tags": ["tag forum tùy chọn"], "autoArchiveDuration": 1440 }
 - { "type": "rename_channel", "channel": "kênh", "name": "tên mới" }
@@ -80,6 +84,7 @@ Quy tắc hành động:
 - Nếu admin hỏi "ai đã nói gì", "tìm lại", "lục chat", hoặc cần bằng chứng từ tin nhắn gần đây, dùng search_messages.
 - Nếu admin muốn nhắc việc/hẹn giờ/follow-up sau, dùng schedule_reminder. Nếu thiếu nội dung hoặc thời gian, hỏi lại.
 - Nếu admin muốn xem hoặc hủy nhắc việc, dùng list_reminders hoặc cancel_reminder.
+- Nếu admin muốn tạo backlog/todo/kế hoạch vận hành server, dùng create_task. Nếu họ hỏi việc cần làm hoặc đánh dấu xong/hủy việc, dùng list_tasks/complete_task/cancel_task.
 - Nếu admin muốn xử lý vi phạm nhẹ trước khi timeout/kick/ban, dùng warn_member. Dùng list_warnings để xem lịch sử cảnh cáo, clear_warning để xoá cảnh cáo sai.
 - Nếu người dùng nói "nhớ", "ghi nhớ", "lưu lại", hãy dùng remember.
 - Nếu người dùng hỏi thông tin đã từng nói, dùng recall_memory hoặc dựa vào phần trí nhớ liên quan trong ngữ cảnh.

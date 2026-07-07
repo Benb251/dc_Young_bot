@@ -5,9 +5,11 @@ const path = require('path');
 const tempMemoryPath = path.join(os.tmpdir(), `assistant-memory-${Date.now()}.json`);
 const tempWarningPath = path.join(os.tmpdir(), `assistant-warnings-${Date.now()}.json`);
 const tempReminderPath = path.join(os.tmpdir(), `assistant-reminders-${Date.now()}.json`);
+const tempTaskPath = path.join(os.tmpdir(), `assistant-tasks-${Date.now()}.json`);
 process.env.ASSISTANT_MEMORY_FILE = tempMemoryPath;
 process.env.ASSISTANT_WARNING_FILE = tempWarningPath;
 process.env.ASSISTANT_REMINDER_FILE = tempReminderPath;
+process.env.ASSISTANT_TASK_FILE = tempTaskPath;
 
 const { extractJson } = require('./assistant_brain.js');
 const memory = require('./assistant_memory.js');
@@ -17,6 +19,7 @@ const autoMemory = require('./assistant_auto_memory.js');
 const reminders = require('./assistant_reminders.js');
 const aiHelper = require('./ai_helper.js');
 const status = require('./assistant_status.js');
+const tasks = require('./assistant_tasks.js');
 const warnings = require('./assistant_warnings.js');
 
 async function main() {
@@ -150,6 +153,22 @@ async function main() {
     throw new Error('warning clearing failed');
   }
 
+  const task = await tasks.createTask({
+    args: { title: 'Set up artist roles', priority: 'high', tags: ['ops'] },
+    context,
+  });
+  if (!task?.id) {
+    throw new Error('task creation failed');
+  }
+  const openTasks = await tasks.listTasks({ context, status: 'open' });
+  if (openTasks.length !== 1 || openTasks[0].priority !== 'high') {
+    throw new Error('task listing failed');
+  }
+  const completedTask = await tasks.updateTaskStatus({ context, id: task.id.slice(0, 8), status: 'done' });
+  if (!completedTask || completedTask.status !== 'done') {
+    throw new Error('task completion failed');
+  }
+
   const assistantStatus = await status.collectAssistantStatus({
     user: { tag: 'TestBot#0001' },
     guilds: { cache: { size: 1 } },
@@ -163,6 +182,7 @@ async function main() {
 
   await fs.rm(tempMemoryPath, { force: true });
   await fs.rm(tempReminderPath, { force: true });
+  await fs.rm(tempTaskPath, { force: true });
   await fs.rm(tempWarningPath, { force: true });
   console.log('assistant smoke test passed');
 }
@@ -170,6 +190,7 @@ async function main() {
 main().catch(async error => {
   await fs.rm(tempMemoryPath, { force: true }).catch(() => null);
   await fs.rm(tempReminderPath, { force: true }).catch(() => null);
+  await fs.rm(tempTaskPath, { force: true }).catch(() => null);
   await fs.rm(tempWarningPath, { force: true }).catch(() => null);
   console.error(error);
   process.exit(1);

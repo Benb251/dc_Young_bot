@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "check": "node --check bot_gateway.js && node --check ai_helper.js && node --check assistant_brain.js && node --check assistant_memory.js && node --check assistant_tools.js && node --check assistant_confirmations.js && node --check assistant_audit.js && node --check assistant_auto_memory.js && node --check assistant_reminders.js && node --check assistant_warnings.js && node --check assistant_status.js",
+    "check": "node --check bot_gateway.js && node --check ai_helper.js && node --check assistant_brain.js && node --check assistant_memory.js && node --check assistant_tools.js && node --check assistant_confirmations.js && node --check assistant_audit.js && node --check assistant_auto_memory.js && node --check assistant_reminders.js && node --check assistant_warnings.js && node --check assistant_status.js && node --check assistant_tasks.js",
     "test": "npm run check && node assistant_smoke_test.js"
   },
   "keywords": [],

@@ -8,6 +8,7 @@ const {
 } = require('./assistant_memory.js');
 const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
 const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_status.js');
+const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 
 const ADMIN_ACTIONS = new Set([
@@ -15,6 +16,7 @@ const ADMIN_ACTIONS = new Set([
   'assistant_status',
   'ban_member',
   'create_role',
+  'create_task',
   'create_text_channel',
   'create_thread',
   'delete_messages',
@@ -23,6 +25,7 @@ const ADMIN_ACTIONS = new Set([
   'inspect_server',
   'kick_member',
   'list_channels',
+  'list_tasks',
   'list_warnings',
   'lock_channel',
   'archive_thread',
@@ -42,6 +45,8 @@ const ADMIN_ACTIONS = new Set([
   'unlock_channel',
   'unpin_message',
   'warn_member',
+  'complete_task',
+  'cancel_task',
   'list_reminders',
 ]);
 
@@ -539,6 +544,30 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(reminder
           ? `Đã hủy reminder ${reminder.id.slice(0, 8)}.`
           : 'Không tìm thấy reminder đang chờ để hủy.');
+      } else if (type === 'create_task') {
+        const task = await createTask({ args, context });
+        results.push(task
+          ? `Đã tạo task ${task.id.slice(0, 8)} [${task.priority}]: ${task.title}`
+          : 'Không tạo được task: thiếu tiêu đề.');
+      } else if (type === 'list_tasks') {
+        const tasks = await listTasks({
+          context,
+          status: args.status || 'open',
+          query: args.query || '',
+          limit: args.limit || 12,
+        });
+        results.push(tasks.length
+          ? tasks.map(task => `- ${task.id.slice(0, 8)} | ${task.status} | ${task.priority} | ${task.title}`).join('\n')
+          : 'Không có task phù hợp.');
+      } else if (type === 'complete_task' || type === 'cancel_task') {
+        const task = await updateTaskStatus({
+          context,
+          id: args.id || args.taskId || args.task_id,
+          status: type === 'complete_task' ? 'done' : 'cancelled',
+        });
+        results.push(task
+          ? `Đã cập nhật task ${task.id.slice(0, 8)} thành ${task.status}: ${task.title}`
+          : 'Không tìm thấy task phù hợp để cập nhật.');
       } else if (type === 'send_message') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
         if (!channel || !channel.isTextBased()) {
