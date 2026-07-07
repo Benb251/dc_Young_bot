@@ -9,10 +9,12 @@ const ADMIN_ACTIONS = new Set([
   'create_text_channel',
   'delete_messages',
   'diagnose_permissions',
+  'inspect_server',
   'kick_member',
   'list_channels',
   'remove_role',
   'rename_channel',
+  'search_messages',
   'send_message',
   'set_channel_topic',
   'summarize_channel',
@@ -150,6 +152,24 @@ async function fetchChannelTranscript(channel, count = 50) {
     .join('\n');
 }
 
+function formatChannelType(type) {
+  const labels = {
+    [ChannelType.GuildText]: 'text',
+    [ChannelType.GuildAnnouncement]: 'announcement',
+    [ChannelType.GuildForum]: 'forum',
+    [ChannelType.GuildCategory]: 'category',
+    [ChannelType.GuildVoice]: 'voice',
+    [ChannelType.GuildStageVoice]: 'stage',
+  };
+  return labels[type] || String(type);
+}
+
+function truncateLine(value, max = 220) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 3)}...`;
+}
+
 async function summarizeChannel(channel, count) {
   const transcript = await fetchChannelTranscript(channel, count);
   if (!transcript) return 'Không tìm thấy tin nhắn chữ nào để tóm tắt.';
@@ -260,6 +280,112 @@ async function diagnoseBotPermissions(message, args) {
   ].join('\n');
 }
 
+async function inspectServer(message, args) {
+  const guild = await resolveGuild(message);
+  if (!guild) return 'Không thể kết nối tới server để đọc cấu trúc.';
+
+  await guild.roles.fetch().catch(() => null);
+  const channels = guild.channels.cache;
+  const roles = guild.roles.cache
+    .filter(role => role.id !== guild.id)
+    .sort((a, b) => b.position - a.position);
+  const textChannels = channels.filter(channel => [
+    ChannelType.GuildText,
+    ChannelType.GuildAnnouncement,
+    ChannelType.GuildForum,
+  ].includes(channel.type));
+  const categories = channels
+    .filter(channel => channel.type === ChannelType.GuildCategory)
+    .sort((a, b) => a.position - b.position)
+    .map(category => category.name)
+    .slice(0, 15);
+  const listedChannels = channels
+    .sort((a, b) => a.position - b.position)
+    .filter(channel => [
+      ChannelType.GuildText,
+      ChannelType.GuildAnnouncement,
+      ChannelType.GuildForum,
+      ChannelType.GuildVoice,
+      ChannelType.GuildStageVoice,
+    ].includes(channel.type))
+    .map(channel => `- #${channel.name} (${formatChannelType(channel.type)}, ${channel.id})`)
+    .slice(0, Number(args.limit || 30));
+  const listedRoles = roles
+    .map(role => `- ${role.name} (${role.id}, members=${role.members?.size ?? 0})`)
+    .slice(0, Number(args.roleLimit || 20));
+
+  return [
+    `Tổng quan server "${guild.name}":`,
+    `- ID: ${guild.id}`,
+    `- Thành viên: ${guild.memberCount ?? 'unknown'}`,
+    `- Kênh: ${channels.size} tổng, ${textChannels.size} text/forum/announcement`,
+    `- Role: ${roles.size}`,
+    `- Owner ID: ${guild.ownerId || 'unknown'}`,
+    categories.length ? `- Category chính: ${categories.join(', ')}` : '- Category chính: chưa có hoặc bot chưa thấy',
+    listedChannels.length ? `\nKênh tiêu biểu:\n${listedChannels.join('\n')}` : '\nKênh tiêu biểu: bot chưa thấy kênh nào',
+    listedRoles.length ? `\nRole cao nhất/thường dùng:\n${listedRoles.join('\n')}` : '\nRole: bot chưa thấy role nào',
+  ].join('\n');
+}
+
+async function searchMessages(message, args) {
+  const guild = await resolveGuild(message);
+  const query = String(args.query || args.keyword || '').trim();
+  if (!query) return 'Thiếu từ khóa cần tìm trong chat.';
+
+  const terms = query.toLowerCase().split(/\s+/).filter(term => term.length >= 2);
+  const maxResults = Math.min(Math.max(Number(args.limit) || 8, 1), 20);
+  const scanLimit = Math.min(Math.max(Number(args.count) || 50, 10), 100);
+  const searchAll = Boolean(args.all || args.scope === 'guild');
+  const requestedChannel = args.channel || args.channel_name || args.channelId;
+  const baseChannels = [];
+
+  if (requestedChannel) {
+    const channel = await findChannel(guild, requestedChannel);
+    if (channel) baseChannels.push(channel);
+  } else if (searchAll && guild) {
+    baseChannels.push(...guild.channels.cache
+      .filter(channel => channel.isTextBased?.() && channel.messages)
+      .sort((a, b) => a.position - b.position)
+      .first(12));
+  } else {
+    baseChannels.push(message.channel);
+  }
+
+  const results = [];
+  for (const channel of baseChannels) {
+    if (!channel?.messages || !channel.isTextBased?.()) continue;
+    const messages = await channel.messages.fetch({ limit: scanLimit }).catch(() => null);
+    if (!messages) continue;
+
+    for (const item of messages.values()) {
+      if (!item.content || item.author?.bot) continue;
+      const haystack = item.content.toLowerCase();
+      const matches = terms.length
+        ? terms.every(term => haystack.includes(term))
+        : haystack.includes(query.toLowerCase());
+      if (!matches) continue;
+      results.push({
+        channel,
+        message: item,
+      });
+      if (results.length >= maxResults) break;
+    }
+    if (results.length >= maxResults) break;
+  }
+
+  if (!results.length) {
+    return `Không tìm thấy tin nhắn gần đây khớp "${query}".`;
+  }
+
+  return [
+    `Tìm thấy ${results.length} tin gần đây khớp "${query}":`,
+    ...results.map(({ channel, message: found }) => {
+      const timestamp = found.createdAt ? found.createdAt.toISOString() : 'unknown-time';
+      return `- #${channel.name} ${timestamp} ${found.author.username}: ${truncateLine(found.content)} (${found.url})`;
+    }),
+  ].join('\n');
+}
+
 async function executeAssistantActions({ message, actions = [], context }) {
   const results = [];
   const canAdmin = isAdminMessage(message);
@@ -278,6 +404,10 @@ async function executeAssistantActions({ message, actions = [], context }) {
     try {
       if (type === 'diagnose_permissions') {
         results.push(await diagnoseBotPermissions(message, args));
+      } else if (type === 'inspect_server') {
+        results.push(await inspectServer(message, args));
+      } else if (type === 'search_messages') {
+        results.push(await searchMessages(message, args));
       } else if (type === 'send_message') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
         if (!channel || !channel.isTextBased()) {

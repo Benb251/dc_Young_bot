@@ -49,6 +49,8 @@ Assistant safety:
 - `delete_messages`: delete recent messages in the current channel.
 - `list_channels`: list visible text/forum channels.
 - `diagnose_permissions`: report missing server/channel permissions, role hierarchy limits, and an invite URL with recommended permissions.
+- `inspect_server`: read a server map with channel, category, role, member, and owner metadata.
+- `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
 - `create_text_channel`: create a text channel, optionally under a category.
 - `rename_channel`: rename a channel.
 - `set_channel_topic`: update a text channel topic.

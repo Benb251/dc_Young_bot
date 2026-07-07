@@ -35,6 +35,8 @@ async function main() {
     !isDangerousAction({ type: 'ban_member' })
     || isDangerousAction({ type: 'recall_memory' })
     || isDangerousAction({ type: 'diagnose_permissions' })
+    || isDangerousAction({ type: 'inspect_server' })
+    || isDangerousAction({ type: 'search_messages' })
   ) {
     throw new Error('dangerous action classification failed');
   }
