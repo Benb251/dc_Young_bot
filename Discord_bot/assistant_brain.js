@@ -44,6 +44,9 @@ Tool actions có thể dùng:
 - { "type": "create_text_channel", "name": "ten-kenh", "category": "tên hoặc id category", "topic": "topic tùy chọn" }
 - { "type": "rename_channel", "channel": "kênh", "name": "tên mới" }
 - { "type": "set_channel_topic", "channel": "kênh", "topic": "topic mới" }
+- { "type": "set_slowmode", "channel": "kênh tùy chọn", "seconds": 10 }
+- { "type": "lock_channel", "channel": "kênh tùy chọn" }
+- { "type": "unlock_channel", "channel": "kênh tùy chọn" }
 - { "type": "assign_role", "member": "id/mention/tên", "role": "id/mention/tên role" }
 - { "type": "remove_role", "member": "id/mention/tên", "role": "id/mention/tên role" }
 - { "type": "create_role", "name": "tên role", "color": "#5865F2", "mentionable": false }

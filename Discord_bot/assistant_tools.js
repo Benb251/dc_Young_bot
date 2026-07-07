@@ -18,15 +18,18 @@ const ADMIN_ACTIONS = new Set([
   'inspect_server',
   'kick_member',
   'list_channels',
+  'lock_channel',
   'remove_role',
   'rename_channel',
   'cancel_reminder',
   'search_messages',
   'send_message',
   'set_channel_topic',
+  'set_slowmode',
   'schedule_reminder',
   'summarize_channel',
   'timeout_member',
+  'unlock_channel',
   'list_reminders',
 ]);
 
@@ -37,11 +40,14 @@ const DANGEROUS_ACTIONS = new Set([
   'create_text_channel',
   'delete_messages',
   'kick_member',
+  'lock_channel',
   'remove_role',
   'rename_channel',
   'send_message',
   'set_channel_topic',
+  'set_slowmode',
   'timeout_member',
+  'unlock_channel',
 ]);
 
 function getActionType(action) {
@@ -476,6 +482,35 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
         await channel.setTopic(String(args.topic || '').slice(0, 1024), `Assistant command by ${message.author.tag}`);
         results.push(`Đã cập nhật topic cho <#${channel.id}>.`);
+      } else if (type === 'set_slowmode') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        const seconds = Math.min(Math.max(Number(args.seconds ?? args.rateLimitPerUser ?? args.slowmode) || 0, 0), 21600);
+        if (!channel || !channel.setRateLimitPerUser) {
+          results.push('Kênh này không hỗ trợ slowmode.');
+          continue;
+        }
+        await channel.setRateLimitPerUser(seconds, `Assistant command by ${message.author.tag}`);
+        results.push(seconds > 0
+          ? `Đã đặt slowmode ${seconds} giây cho <#${channel.id}>.`
+          : `Đã tắt slowmode cho <#${channel.id}>.`);
+      } else if (type === 'lock_channel' || type === 'unlock_channel') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        if (!guild || !channel?.permissionOverwrites?.edit) {
+          results.push('Không thể cập nhật quyền gửi tin của kênh này.');
+          continue;
+        }
+        const everyoneRole = guild.roles.everyone;
+        if (type === 'lock_channel') {
+          await channel.permissionOverwrites.edit(everyoneRole, {
+            SendMessages: false,
+          }, { reason: `Assistant command by ${message.author.tag}` });
+          results.push(`Đã khóa gửi tin cho @everyone trong <#${channel.id}>.`);
+        } else {
+          await channel.permissionOverwrites.edit(everyoneRole, {
+            SendMessages: null,
+          }, { reason: `Assistant command by ${message.author.tag}` });
+          results.push(`Đã gỡ khóa gửi tin cho @everyone trong <#${channel.id}>.`);
+        }
       } else if (type === 'delete_messages') {
         const count = Math.min(Math.max(Number(args.count) || 0, 1), 100);
         if (!message.channel || !message.channel.bulkDelete) {

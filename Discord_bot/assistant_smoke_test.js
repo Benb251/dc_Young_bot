@@ -48,6 +48,8 @@ async function main() {
 
   if (
     !isDangerousAction({ type: 'ban_member' })
+    || !isDangerousAction({ type: 'lock_channel' })
+    || !isDangerousAction({ type: 'set_slowmode' })
     || isDangerousAction({ type: 'recall_memory' })
     || isDangerousAction({ type: 'forget_memory' })
     || isDangerousAction({ type: 'diagnose_permissions' })
