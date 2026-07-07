@@ -21,6 +21,7 @@ const aiHelper = require('./ai_helper.js');
 const status = require('./assistant_status.js');
 const tasks = require('./assistant_tasks.js');
 const warnings = require('./assistant_warnings.js');
+const advisor = require('./assistant_server_advisor.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -178,6 +179,40 @@ async function main() {
   const statusText = status.formatAssistantStatus(assistantStatus);
   if (!statusText.includes('TestBot#0001') || !statusText.includes('Memory:')) {
     throw new Error('assistant status formatting failed');
+  }
+
+  const snapshot = advisor.buildServerSnapshot({
+    id: 'guild',
+    name: 'Test Guild',
+    memberCount: 14,
+    ownerId: 'owner',
+    channels: {
+      cache: new Map([
+        ['cat', { id: 'cat', name: 'Community', type: 4, position: 0 }],
+        ['rules', {
+          id: 'rules',
+          name: 'rules',
+          type: 0,
+          position: 1,
+          parentId: 'cat',
+          parent: { name: 'Community' },
+          topic: 'Server rules',
+        }],
+      ]),
+    },
+    roles: {
+      cache: new Map([
+        ['guild', { id: 'guild', name: '@everyone', position: 0 }],
+        ['artist', { id: 'artist', name: 'Artist', position: 1, members: { size: 3 } }],
+      ]),
+    },
+  });
+  if (snapshot.counts.channels !== 2 || snapshot.counts.roles !== 1 || snapshot.channels[0].name !== 'rules') {
+    throw new Error('server advisor snapshot failed');
+  }
+  const advisorPrompt = advisor.buildAdvisorPrompt({ snapshot, question: 'Next stage?', tasks: [] });
+  if (!advisorPrompt.includes('Test Guild') || !advisorPrompt.includes('Next stage?')) {
+    throw new Error('server advisor prompt failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

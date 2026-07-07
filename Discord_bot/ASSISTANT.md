@@ -63,6 +63,7 @@ Assistant safety:
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
 - Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
 - `assistant_status` reports runtime, AI model chain, store health, and memory/reminder/warning counts.
+- `analyze_server` lets admins ask for a practical operations roadmap based on the visible server structure and open task backlog.
 
 ## Supported Tools
 
@@ -74,6 +75,7 @@ Assistant safety:
 - `list_channels`: list visible text/forum channels.
 - `diagnose_permissions`: report missing server/channel permissions, role hierarchy limits, and an invite URL with recommended permissions.
 - `inspect_server`: read a server map with channel, category, role, member, and owner metadata.
+- `analyze_server`: analyze the current server structure and suggest the next operations phase, with an offline fallback if AI routing fails.
 - `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
 - `schedule_reminder`: schedule a future reminder in the current channel or DM.
 - `list_reminders`: list pending reminders for the current admin/user.

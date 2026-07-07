@@ -10,8 +10,10 @@ const { cancelReminder, createReminder, listReminders } = require('./assistant_r
 const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_status.js');
 const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
+const { analyzeServer } = require('./assistant_server_advisor.js');
 
 const ADMIN_ACTIONS = new Set([
+  'analyze_server',
   'assign_role',
   'assistant_status',
   'ban_member',
@@ -527,6 +529,13 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(formatAssistantStatus(status));
       } else if (type === 'inspect_server') {
         results.push(await inspectServer(message, args));
+      } else if (type === 'analyze_server') {
+        const tasks = await listTasks({
+          context,
+          status: 'open',
+          limit: args.taskLimit || 10,
+        });
+        results.push(await analyzeServer({ guild, args, tasks }));
       } else if (type === 'search_messages') {
         results.push(await searchMessages(message, args));
       } else if (type === 'schedule_reminder') {
