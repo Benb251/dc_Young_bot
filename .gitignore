@@ -27,3 +27,6 @@ build/
 # Logs
 *.log
 npm-debug.log*
+
+# Runtime assistant memory
+Discord_bot/data/

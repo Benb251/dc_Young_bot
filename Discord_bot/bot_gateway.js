@@ -97,7 +97,8 @@ client.once('ready', () => {
 });
 
 // Import helper AI
-const { getAIChatResponse, classifyCrosspostTopic, parseAdminCommand } = require('./ai_helper.js');
+const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
+const { handleAssistantMessage } = require('./assistant_brain.js');
 
 // Helper to get status tag IDs from a forum channel
 function getStatusTagIds(parentChannel) {
@@ -279,177 +280,40 @@ client.on('messageCreate', async (message) => {
   try {
     if (message.author.bot) return;
 
-    // I. Xử lý tin nhắn riêng (DM) từ Admin
     const isDM = !message.guild;
     if (isDM) {
       const adminId = process.env.ADMIN_DISCORD_ID;
       if (message.author.id !== adminId) {
-        await message.reply('⚠️ Cảnh báo: Bạn không có quyền trò chuyện riêng với bot này!');
+        await message.reply('⚠️ Bạn không có quyền trò chuyện riêng với bot này.');
         return;
       }
-
-      const contentTrim = message.content.trim();
-      console.log(`💬 [ADMIN DM] Analyzing message from owner: "${contentTrim}"`);
 
       await message.channel.sendTyping();
-      
-      // AI phân tích ý định của Admin (không cần cú pháp "ra lệnh:")
-      const cmdResult = await parseAdminCommand(contentTrim);
-      console.log(`💬 [ADMIN DM] AI parsed intent:`, cmdResult);
-
-      if (cmdResult.action === 'send_message') {
-        const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
-        try {
-          const guild = await client.guilds.fetch(process.env.GUILD_ID);
-          const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
-          
-          if (targetChannel) {
-            await targetChannel.send(cmdResult.content);
-            await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh <#${targetChannel.id}> thành công!`);
-          } else {
-            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
-          }
-        } catch (guildErr) {
-          console.error(guildErr);
-          await message.reply('❌ Không thể kết nối tới server Tổ Young Phố để thực hiện lệnh.');
-        }
-        return;
-      } 
-      
-      else if (cmdResult.action === 'summarize_channel') {
-        const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
-        const fetchCount = cmdResult.count || 100;
-        
-        try {
-          const guild = await client.guilds.fetch(process.env.GUILD_ID);
-          const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
-          
-          if (targetChannel) {
-            await message.reply(`🔍 Đang quét và tóm tắt ${fetchCount} tin nhắn mới nhất tại kênh <#${targetChannel.id}>. Chờ mình một chút...`);
-            await message.channel.sendTyping();
-
-            // Fetch tin nhắn mới nhất từ kênh đó
-            const fetchedMessages = await targetChannel.messages.fetch({ limit: fetchCount });
-            
-            // Xếp tin nhắn theo thứ tự thời gian cũ trước mới sau
-            const chatLog = fetchedMessages.reverse()
-              .map(m => `[${m.author.username}]: ${m.content}`)
-              .join('\n');
-
-            if (!chatLog) {
-              await message.reply(`⚠️ Không có tin nhắn nào được tìm thấy ở kênh <#${targetChannel.id}>.`);
-              return;
-            }
-
-            // Gửi dữ liệu chat log lên AI để tóm tắt
-            const summarizePrompt = `Bạn là trợ lý AI. Dưới đây là nội dung chat log từ kênh #${targetChannelName}. Hãy tóm tắt lại các ý chính, các vấn đề nổi bật và các kết luận chính mà mọi người đang thảo luận một cách ngắn gọn, súc tích bằng tiếng Việt:\n\n${chatLog}`;
-            
-            const summaryResult = await getAIChatResponse([
-              { role: 'user', content: summarizePrompt }
-            ]);
-
-            await message.reply(`📊 **Bản tóm tắt thảo luận kênh <#${targetChannel.id}>:**\n\n${summaryResult}`);
-          } else {
-            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
-          }
-        } catch (err) {
-          console.error(err);
-          await message.reply('❌ Gặp lỗi khi cố gắng tóm tắt kênh.');
-        }
-        return;
-      }
-      
-      // Nếu là trò chuyện thông thường (normal_chat) hoặc không thuộc 2 lệnh quản trị trên
-      const aiResponse = await getAIChatResponse([
-        { role: 'user', content: contentTrim }
-      ]);
-      await message.reply(aiResponse);
+      await handleAssistantMessage(message, message.content.trim() || 'Chào bot!');
       return;
     }
 
     const channel = message.channel;
 
-    // A. Kiểm tra nếu bot được tag (@mention) thì gọi AI phản hồi (hỗ trợ đọc hình ảnh đính kèm)
     if (client.user && message.mentions.has(client.user.id)) {
-      // Bỏ tag bot ra khỏi nội dung text
-      let cleanContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
-      if (!cleanContent) {
-        cleanContent = "Chào bot!";
-      }
+      const cleanContent = message.content
+        .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
+        .trim() || 'Chào bot!';
 
-      // Xử lý AI Admin Commands (Ra lệnh bằng ngôn ngữ tự nhiên)
-      if (cleanContent.toLowerCase().startsWith('ra lệnh:') || cleanContent.toLowerCase().startsWith('ralenh:')) {
-        const adminId = process.env.ADMIN_DISCORD_ID;
-        if (message.author.id !== adminId) {
-          await message.reply('⚠️ Cảnh báo: Bạn không có quyền hạn cấp cao để sử dụng lệnh Admin!');
-          return;
-        }
-
-        const instruction = cleanContent.replace(/^(ra lệnh:|ralenh:)\s*/i, '').trim();
-        console.log(`👑 [ADMIN COMMAND] Processing instruction from owner: "${instruction}"`);
-        
-        await message.channel.sendTyping();
-        const cmdResult = await parseAdminCommand(instruction);
-        console.log(`👑 [ADMIN COMMAND] AI parsed result:`, cmdResult);
-
-        if (cmdResult.action === 'send_message') {
-          const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
-          // Tìm channel theo tên
-          const targetChannel = message.guild.channels.cache.find(c => c.name === targetChannelName);
-          if (targetChannel) {
-            await targetChannel.send(cmdResult.content);
-            await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh <#${targetChannel.id}> thành công!`);
-          } else {
-            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\``);
-          }
-        } 
-        else if (cmdResult.action === 'delete_messages') {
-          const deleteCount = parseInt(cmdResult.count) || 0;
-          if (deleteCount > 0 && deleteCount <= 100) {
-            // Xóa tin nhắn trong kênh hiện tại
-            await message.channel.bulkDelete(deleteCount + 1).catch(console.error); // +1 để xóa luôn cả tin nhắn ra lệnh
-            const successMsg = await message.channel.send(`✅ Đã thực hiện: Xóa thành công **${deleteCount}** tin nhắn.`);
-            setTimeout(() => successMsg.delete().catch(() => null), 3000); // Tự động xóa thông báo sau 3s
-          } else {
-            await message.reply('❌ Số lượng tin nhắn cần xóa phải nằm trong khoảng từ 1 đến 100.');
-          }
-        } 
-        else {
-          await message.reply(`❓ Bot không hiểu hoặc chưa hỗ trợ lệnh này. Chi tiết: ${cmdResult.message || 'Lệnh không xác định'}`);
-        }
-        return;
-      }
-
-      // Lấy hình ảnh đính kèm
-      const imageUrls = message.attachments
-        .filter(att => att.contentType && att.contentType.startsWith('image/'))
-        .map(att => att.url);
-
-      console.log(`💬 User ${message.author.tag} mentioned bot with: "${cleanContent}" (${imageUrls.length} images)`);
-
-      // Show typing indicator
       await message.channel.sendTyping();
-
-      const aiResponse = await getAIChatResponse(
-        [{ role: 'user', content: cleanContent }],
-        imageUrls
-      );
-
-      await message.reply(aiResponse);
+      await handleAssistantMessage(message, cleanContent);
       return;
     }
 
-    // B. Check if it is a thread under a Q&A forum channel for solving trigger
     if (!channel.isThread() || !channel.parentId || !QA_CHANNEL_IDS.includes(channel.parentId)) return;
 
     const contentLower = message.content.toLowerCase().trim();
     const triggers = ['đã giải quyết', 'da giai quyet', '/done', '!done', 'done'];
 
     if (triggers.includes(contentLower)) {
-      // Permission check: check if the message author is the thread starter or a moderator
       const threadOwnerId = channel.ownerId;
       const isOwner = message.author.id === threadOwnerId;
-      const isMod = message.member.permissions.has('ManageThreads') || message.member.permissions.has('Administrator');
+      const isMod = message.member?.permissions.has('ManageThreads') || message.member?.permissions.has('Administrator');
 
       if (isOwner || isMod) {
         await markThreadAsSolved(channel, message.author);

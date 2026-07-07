@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "node --check bot_gateway.js && node --check ai_helper.js && node --check assistant_brain.js && node --check assistant_memory.js && node --check assistant_tools.js",
+    "test": "npm run check && node assistant_smoke_test.js"
   },
   "keywords": [],
   "author": "",

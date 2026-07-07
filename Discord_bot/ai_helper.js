@@ -14,10 +14,11 @@ async function imageUrlToBase64(url) {
   }
 }
 
-async function getAIChatResponse(messages, imageUrls = []) {
+async function getAIChatResponse(messages, imageUrls = [], options = {}) {
   const endpoint = process.env.AI_ENDPOINT || 'http://localhost:20128/v1';
   const model = process.env.AI_MODEL || 'xai/grok-4';
   const systemPrompt = process.env.AI_SYSTEM_PROMPT || 'Bạn là trợ lý AI.';
+  const includeDefaultSystem = options.includeDefaultSystem !== false;
 
   const contentArray = [];
   
@@ -41,10 +42,9 @@ async function getAIChatResponse(messages, imageUrls = []) {
     userMessage.content = contentArray;
   }
 
-  const apiMessages = [
-    { role: 'system', content: systemPrompt },
-    ...messages
-  ];
+  const apiMessages = includeDefaultSystem
+    ? [{ role: 'system', content: systemPrompt }, ...messages]
+    : [...messages];
 
   const headers = {
     'Content-Type': 'application/json'
@@ -61,7 +61,7 @@ async function getAIChatResponse(messages, imageUrls = []) {
       body: JSON.stringify({
         model: model,
         messages: apiMessages,
-        temperature: 0.7
+        temperature: options.temperature ?? 0.7
       })
     });
 
