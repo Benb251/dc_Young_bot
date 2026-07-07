@@ -280,47 +280,89 @@ client.on('messageCreate', async (message) => {
     // I. Xử lý tin nhắn riêng (DM) từ Admin
     const isDM = !message.guild;
     if (isDM) {
+      const adminId = process.env.ADMIN_DISCORD_ID;
+      if (message.author.id !== adminId) {
+        await message.reply('⚠️ Cảnh báo: Bạn không có quyền trò chuyện riêng với bot này!');
+        return;
+      }
+
       const contentTrim = message.content.trim();
-      if (contentTrim.toLowerCase().startsWith('ra lệnh:') || contentTrim.toLowerCase().startsWith('ralenh:')) {
-        const adminId = process.env.ADMIN_DISCORD_ID;
-        if (message.author.id !== adminId) {
-          await message.reply('⚠️ Cảnh báo: Bạn không có quyền hạn cấp cao để sử dụng lệnh Admin!');
-          return;
-        }
+      console.log(`💬 [ADMIN DM] Analyzing message from owner: "${contentTrim}"`);
 
-        const instruction = contentTrim.replace(/^(ra lệnh:|ralenh:)\s*/i, '').trim();
-        console.log(`👑 [ADMIN DM COMMAND] Processing instruction from owner: "${instruction}"`);
+      await message.channel.sendTyping();
+      
+      // AI phân tích ý định của Admin (không cần cú pháp "ra lệnh:")
+      const cmdResult = await parseAdminCommand(contentTrim);
+      console.log(`💬 [ADMIN DM] AI parsed intent:`, cmdResult);
 
-        await message.channel.sendTyping();
-        const cmdResult = await parseAdminCommand(instruction);
-        console.log(`👑 [ADMIN DM COMMAND] AI parsed result:`, cmdResult);
-
-        if (cmdResult.action === 'send_message') {
-          const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
-          try {
-            // Lấy server (Guild) Tổ Young Phố
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
-            
-            if (targetChannel) {
-              await targetChannel.send(cmdResult.content);
-              await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh #${targetChannelName} thành công!`);
-            } else {
-              await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
-            }
-          } catch (guildErr) {
-            console.error(guildErr);
-            await message.reply('❌ Không thể kết nối tới server Tổ Young Phố để thực hiện lệnh.');
+      if (cmdResult.action === 'send_message') {
+        const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
+        try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
+          
+          if (targetChannel) {
+            await targetChannel.send(cmdResult.content);
+            await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh <#${targetChannel.id}> thành công!`);
+          } else {
+            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
           }
-        } 
-        else if (cmdResult.action === 'delete_messages') {
-          await message.reply('❌ Lệnh xóa tin nhắn không khả dụng khi nhắn tin riêng (DM). Hãy sử dụng trực tiếp trong kênh của server.');
-        } 
-        else {
-          await message.reply(`❓ Bot không hiểu hoặc chưa hỗ trợ lệnh này. Chi tiết: ${cmdResult.message || 'Lệnh không xác định'}`);
+        } catch (guildErr) {
+          console.error(guildErr);
+          await message.reply('❌ Không thể kết nối tới server Tổ Young Phố để thực hiện lệnh.');
+        }
+        return;
+      } 
+      
+      else if (cmdResult.action === 'summarize_channel') {
+        const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
+        const fetchCount = cmdResult.count || 100;
+        
+        try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
+          
+          if (targetChannel) {
+            await message.reply(`🔍 Đang quét và tóm tắt ${fetchCount} tin nhắn mới nhất tại kênh <#${targetChannel.id}>. Chờ mình một chút...`);
+            await message.channel.sendTyping();
+
+            // Fetch tin nhắn mới nhất từ kênh đó
+            const fetchedMessages = await targetChannel.messages.fetch({ limit: fetchCount });
+            
+            // Xếp tin nhắn theo thứ tự thời gian cũ trước mới sau
+            const chatLog = fetchedMessages.reverse()
+              .map(m => `[${m.author.username}]: ${m.content}`)
+              .join('\n');
+
+            if (!chatLog) {
+              await message.reply(`⚠️ Không có tin nhắn nào được tìm thấy ở kênh <#${targetChannel.id}>.`);
+              return;
+            }
+
+            // Gửi dữ liệu chat log lên AI để tóm tắt
+            const summarizePrompt = `Bạn là trợ lý AI. Dưới đây là nội dung chat log từ kênh #${targetChannelName}. Hãy tóm tắt lại các ý chính, các vấn đề nổi bật và các kết luận chính mà mọi người đang thảo luận một cách ngắn gọn, súc tích bằng tiếng Việt:\n\n${chatLog}`;
+            
+            const summaryResult = await getAIChatResponse([
+              { role: 'user', content: summarizePrompt }
+            ]);
+
+            await message.reply(`📊 **Bản tóm tắt thảo luận kênh <#${targetChannel.id}>:**\n\n${summaryResult}`);
+          } else {
+            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
+          }
+        } catch (err) {
+          console.error(err);
+          await message.reply('❌ Gặp lỗi khi cố gắng tóm tắt kênh.');
         }
         return;
       }
+      
+      // Nếu là trò chuyện thông thường (normal_chat) hoặc không thuộc 2 lệnh quản trị trên
+      const aiResponse = await getAIChatResponse([
+        { role: 'user', content: contentTrim }
+      ]);
+      await message.reply(aiResponse);
+      return;
     }
 
     const channel = message.channel;

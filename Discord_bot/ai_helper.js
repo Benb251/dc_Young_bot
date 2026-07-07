@@ -135,31 +135,37 @@ Yêu cầu bắt buộc:
 }
 
 async function parseAdminCommand(instruction) {
-  const systemPrompt = `Bạn là bộ não phân tích lệnh của Discord Bot. Hãy phân tích yêu cầu bằng ngôn ngữ tự nhiên của Admin và bóc tách thành một cấu trúc dữ liệu JSON để bot thực thi.
+  const systemPrompt = `Bạn là bộ não phân tích ý định của Admin trong kênh chat riêng (DM). Hãy phân tích yêu cầu bằng ngôn ngữ tự nhiên và bóc tách thành một cấu trúc dữ liệu JSON để bot thực thi.
 
-Các lệnh được hỗ trợ:
-1. Gửi tin nhắn:
-   Yêu cầu: Gửi tin nhắn vào kênh nào đó với nội dung gì đó.
-   JSON trả về:
-   {
-     "action": "send_message",
-     "channel_name": "tên-kênh-nhận",
-     "content": "nội dung tin nhắn cần gửi"
-   }
+Các ý định/hành động được hỗ trợ:
+1. Gửi tin nhắn hoặc Nhúng link (send_message):
+   - Ý định: Admin muốn gửi một thông báo, tin nhắn hoặc chèn link/nhúng link vào một kênh cụ thể trên server.
+   - JSON trả về:
+     {
+       "action": "send_message",
+       "channel_name": "tên-kênh-nhận (ví dụ: 'chat-chung' hoặc 'thông-báo')",
+       "content": "nội dung tin nhắn đầy đủ (bao gồm link nếu có)"
+     }
 
-2. Xóa tin nhắn:
-   Yêu cầu: Xóa N tin nhắn trong kênh hiện tại hoặc kênh nào đó.
-   JSON trả về:
-   {
-     "action": "delete_messages",
-     "channel_name": "tên-kênh-nếu-có",
-     "count": 5
-   }
+2. Tóm tắt kênh chat (summarize_channel):
+   - Ý định: Admin muốn xem tóm tắt, tổng hợp nội dung thảo luận mới nhất của một kênh nào đó trên server.
+   - JSON trả về:
+     {
+       "action": "summarize_channel",
+       "channel_name": "tên-kênh-cần-tóm-tắt",
+       "count": 100 // số lượng tin nhắn muốn quét, mặc định là 100 nếu không ghi rõ
+     }
+
+3. Trò chuyện bình thường (normal_chat):
+   - Ý định: Admin chỉ đang trò chuyện, hỏi han thông thường hoặc các yêu cầu nằm ngoài 2 chức năng trên.
+   - JSON trả về:
+     {
+       "action": "normal_chat"
+     }
 
 Yêu cầu bắt buộc:
-1. Chỉ trả về một chuỗi JSON hợp lệ có cấu trúc như trên. Không kèm bất kỳ giải thích, markdown codeblock (\`\`\`json) hay chữ nào khác.
-2. Nếu lệnh không thuộc danh sách trên hoặc không rõ ràng, hãy trả về:
-   { "action": "unknown", "message": "Mô tả lý do không hiểu lệnh" }`;
+1. Chỉ trả về một chuỗi JSON hợp lệ có cấu trúc như trên. Tuyệt đối không kèm giải thích, markdown codeblock (\`\`\`json) hay chữ nào khác ngoài JSON.
+2. Hãy suy luận thông minh dựa trên ngữ cảnh để chọn hành động đúng nhất.`;
 
   try {
     const responseText = await getAIChatResponse(
@@ -169,7 +175,6 @@ Yêu cầu bắt buộc:
       ]
     );
 
-    // Dọn dẹp markdown codeblock nếu AI tự bọc
     let cleanJson = responseText.trim();
     if (cleanJson.startsWith('```')) {
       cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
@@ -178,7 +183,7 @@ Yêu cầu bắt buộc:
     return JSON.parse(cleanJson);
   } catch (error) {
     console.error('Failed to parse admin command:', error);
-    return { action: 'unknown', message: 'Lỗi parse JSON' };
+    return { action: 'normal_chat' };
   }
 }
 
