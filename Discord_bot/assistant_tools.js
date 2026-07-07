@@ -24,8 +24,11 @@ const ADMIN_ACTIONS = new Set([
   'list_channels',
   'list_warnings',
   'lock_channel',
+  'archive_thread',
+  'pin_message',
   'remove_role',
   'rename_channel',
+  'rename_thread',
   'cancel_reminder',
   'search_messages',
   'send_embed',
@@ -36,6 +39,7 @@ const ADMIN_ACTIONS = new Set([
   'summarize_channel',
   'timeout_member',
   'unlock_channel',
+  'unpin_message',
   'warn_member',
   'list_reminders',
 ]);
@@ -49,14 +53,18 @@ const DANGEROUS_ACTIONS = new Set([
   'clear_warning',
   'kick_member',
   'lock_channel',
+  'archive_thread',
+  'pin_message',
   'remove_role',
   'rename_channel',
+  'rename_thread',
   'send_embed',
   'send_message',
   'set_channel_topic',
   'set_slowmode',
   'timeout_member',
   'unlock_channel',
+  'unpin_message',
   'warn_member',
 ]);
 
@@ -138,6 +146,36 @@ async function findChannel(guild, channelNameOrId) {
     const normalized = normalizeChannelName(channel.name);
     return normalized === wanted || normalized.includes(wanted);
   }) || null;
+}
+
+function extractMessageId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const urlMatch = raw.match(/\/channels\/\d+\/\d+\/(\d+)/);
+  if (urlMatch) return urlMatch[1];
+  const idMatch = raw.match(/\d{15,25}/);
+  return idMatch ? idMatch[0] : null;
+}
+
+function extractChannelIdFromMessageUrl(value) {
+  const raw = String(value || '').trim();
+  const urlMatch = raw.match(/\/channels\/\d+\/(\d+)\/\d+/);
+  return urlMatch ? urlMatch[1] : null;
+}
+
+async function findMessageForAction(message, guild, args) {
+  const messageRef = args.messageUrl || args.url || args.messageId || args.message_id;
+  const channelIdFromUrl = extractChannelIdFromMessageUrl(messageRef);
+  const channel = channelIdFromUrl
+    ? await findChannel(guild, channelIdFromUrl)
+    : args.channel || args.channel_name || args.channelId
+      ? await findChannel(guild, args.channel || args.channel_name || args.channelId)
+      : message.channel;
+  const messageId = extractMessageId(messageRef)
+    || args.id
+    || message.reference?.messageId;
+  if (!channel?.messages || !messageId) return null;
+  return channel.messages.fetch(messageId).catch(() => null);
 }
 
 async function findRole(guild, roleNameOrId) {
@@ -560,6 +598,39 @@ async function executeAssistantActions({ message, actions = [], context }) {
             SendMessages: null,
           }, { reason: `Assistant command by ${message.author.tag}` });
           results.push(`Đã gỡ khóa gửi tin cho @everyone trong <#${channel.id}>.`);
+        }
+      } else if (type === 'pin_message' || type === 'unpin_message') {
+        const targetMessage = await findMessageForAction(message, guild, args);
+        if (!targetMessage) {
+          results.push('Không tìm thấy tin nhắn cần ghim/gỡ ghim. Hãy reply vào tin đó hoặc đưa message URL/ID.');
+          continue;
+        }
+        if (type === 'pin_message') {
+          await targetMessage.pin(`Assistant command by ${message.author.tag}`);
+          results.push(`Đã ghim tin nhắn: ${targetMessage.url}`);
+        } else {
+          await targetMessage.unpin(`Assistant command by ${message.author.tag}`);
+          results.push(`Đã gỡ ghim tin nhắn: ${targetMessage.url}`);
+        }
+      } else if (type === 'rename_thread' || type === 'archive_thread') {
+        const target = args.thread || args.threadId || args.channel || args.channelId
+          ? await findChannel(guild, args.thread || args.threadId || args.channel || args.channelId)
+          : message.channel;
+        if (!target?.isThread?.()) {
+          results.push('Không tìm thấy thread cần xử lý.');
+          continue;
+        }
+        if (type === 'rename_thread') {
+          const name = String(args.name || args.title || '').trim().slice(0, 100);
+          if (!name) {
+            results.push('Thiếu tên thread mới.');
+            continue;
+          }
+          await target.setName(name, `Assistant command by ${message.author.tag}`);
+          results.push(`Đã đổi tên thread thành "${name}".`);
+        } else {
+          await target.setArchived(true, `Assistant command by ${message.author.tag}`);
+          results.push(`Đã archive thread "${target.name}".`);
         }
       } else if (type === 'delete_messages') {
         const count = Math.min(Math.max(Number(args.count) || 0, 1), 100);

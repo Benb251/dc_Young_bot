@@ -49,6 +49,10 @@ Tool actions có thể dùng:
 - { "type": "set_slowmode", "channel": "kênh tùy chọn", "seconds": 10 }
 - { "type": "lock_channel", "channel": "kênh tùy chọn" }
 - { "type": "unlock_channel", "channel": "kênh tùy chọn" }
+- { "type": "pin_message", "messageId": "id/url tùy chọn", "channel": "kênh tùy chọn" }
+- { "type": "unpin_message", "messageId": "id/url tùy chọn", "channel": "kênh tùy chọn" }
+- { "type": "rename_thread", "thread": "id/tên tùy chọn", "name": "tên mới" }
+- { "type": "archive_thread", "thread": "id/tên tùy chọn" }
 - { "type": "assign_role", "member": "id/mention/tên", "role": "id/mention/tên role" }
 - { "type": "remove_role", "member": "id/mention/tên", "role": "id/mention/tên role" }
 - { "type": "create_role", "name": "tên role", "color": "#5865F2", "mentionable": false }
@@ -66,6 +70,8 @@ Tool actions có thể dùng:
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
 - Nếu admin muốn đăng thông báo đẹp, announcement, nội quy, update hoặc tin ghim dạng trình bày gọn, dùng send_embed thay vì send_message.
+- Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
+- Nếu admin muốn đổi tên hoặc archive thread hiện tại, dùng rename_thread/archive_thread.
 - Nếu admin hỏi bot đang chạy ổn không, đang dùng model gì, uptime, store memory/reminder/warning, health check, dùng assistant_status.
 - Nếu admin hỏi bot đang thiếu quyền gì, vì sao không quản lý được server/kênh/role, hoặc muốn kiểm tra setup cộng đồng, dùng diagnose_permissions.
 - Nếu admin hỏi server đang có cấu trúc gì, có những kênh/role nào, hoặc cần bot tự hiểu cộng đồng trước khi đề xuất, dùng inspect_server.

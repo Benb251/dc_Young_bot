@@ -58,6 +58,8 @@ async function main() {
     || !isDangerousAction({ type: 'clear_warning' })
     || !isDangerousAction({ type: 'send_embed' })
     || !isDangerousAction({ type: 'lock_channel' })
+    || !isDangerousAction({ type: 'pin_message' })
+    || !isDangerousAction({ type: 'rename_thread' })
     || !isDangerousAction({ type: 'set_slowmode' })
     || isDangerousAction({ type: 'recall_memory' })
     || isDangerousAction({ type: 'forget_memory' })

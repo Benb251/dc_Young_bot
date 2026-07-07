@@ -78,6 +78,8 @@ Assistant safety:
 - `set_channel_topic`: update a text channel topic.
 - `set_slowmode`: set or clear channel slowmode.
 - `lock_channel` / `unlock_channel`: deny or restore `@everyone` send permission in a channel.
+- `pin_message` / `unpin_message`: pin or unpin a referenced message, message URL, or message ID.
+- `rename_thread` / `archive_thread`: manage the current or named thread.
 - `assign_role` / `remove_role`: manage member roles by mention, ID, or name.
 - `create_role`: create a new role.
 - `timeout_member`: timeout a member for a bounded number of minutes.
