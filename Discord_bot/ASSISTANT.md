@@ -76,6 +76,7 @@ Assistant safety:
 - `diagnose_permissions`: report missing server/channel permissions, role hierarchy limits, and an invite URL with recommended permissions.
 - `inspect_server`: read a server map with channel, category, role, member, and owner metadata.
 - `analyze_server`: analyze the current server structure and suggest the next operations phase, with an offline fallback if AI routing fails.
+- `inspect_member`: inspect one member's roles, notable permissions, join/account age, timeout state, and active warnings.
 - `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
 - `schedule_reminder`: schedule a future reminder in the current channel or DM.
 - `list_reminders`: list pending reminders for the current admin/user.

@@ -25,6 +25,7 @@ const ADMIN_ACTIONS = new Set([
   'diagnose_permissions',
   'clear_warning',
   'inspect_server',
+  'inspect_member',
   'kick_member',
   'list_channels',
   'list_tasks',
@@ -240,6 +241,86 @@ function truncateLine(value, max = 220) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
   return `${text.slice(0, max - 3)}...`;
+}
+
+function formatDateTime(value) {
+  if (!value) return 'unknown';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return date.toISOString();
+}
+
+function getNotableMemberPermissions(member) {
+  const checks = [
+    ['Administrator', PermissionsBitField.Flags.Administrator],
+    ['ManageGuild', PermissionsBitField.Flags.ManageGuild],
+    ['ManageChannels', PermissionsBitField.Flags.ManageChannels],
+    ['ManageRoles', PermissionsBitField.Flags.ManageRoles],
+    ['ManageMessages', PermissionsBitField.Flags.ManageMessages],
+    ['ManageThreads', PermissionsBitField.Flags.ManageThreads],
+    ['ModerateMembers', PermissionsBitField.Flags.ModerateMembers],
+    ['KickMembers', PermissionsBitField.Flags.KickMembers],
+    ['BanMembers', PermissionsBitField.Flags.BanMembers],
+  ];
+  return checks
+    .filter(([, flag]) => member.permissions?.has(flag))
+    .map(([name]) => name);
+}
+
+async function inspectMember(message, args) {
+  const guild = await resolveGuild(message);
+  if (!guild) return 'Không thể kết nối tới server để đọc hồ sơ member.';
+
+  const target = args.member || args.user || args.userId || args.memberId
+    || message.mentions?.users?.first?.()?.id
+    || message.reference?.messageId;
+  let member = await findMember(guild, target);
+
+  if (!member && message.reference?.messageId && message.channel?.messages) {
+    const referenced = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+    if (referenced?.author?.id) {
+      member = await findMember(guild, referenced.author.id);
+    }
+  }
+
+  if (!member) {
+    return 'Không tìm thấy member cần kiểm tra. Hãy mention, đưa ID, hoặc reply vào tin nhắn của member đó.';
+  }
+
+  const roles = member.roles.cache
+    .filter(role => role.id !== guild.id)
+    .sort((a, b) => b.position - a.position)
+    .map(role => role.name);
+  const warnings = await listWarnings({
+    guildId: guild.id,
+    memberId: member.id,
+    limit: Math.min(Math.max(Number(args.warningLimit) || 5, 1), 10),
+  });
+  const notablePermissions = getNotableMemberPermissions(member);
+  const joinedDays = member.joinedAt
+    ? Math.max(0, Math.floor((Date.now() - member.joinedAt.getTime()) / 86_400_000))
+    : null;
+  const accountDays = member.user?.createdAt
+    ? Math.max(0, Math.floor((Date.now() - member.user.createdAt.getTime()) / 86_400_000))
+    : null;
+
+  return [
+    `Hồ sơ member: ${member.displayName} (${member.user?.tag || member.id})`,
+    `- ID: ${member.id}`,
+    `- Bot: ${member.user?.bot ? 'có' : 'không'}`,
+    `- Vào server: ${formatDateTime(member.joinedAt)}${joinedDays === null ? '' : ` (${joinedDays} ngày trước)`}`,
+    `- Tạo tài khoản: ${formatDateTime(member.user?.createdAt)}${accountDays === null ? '' : ` (${accountDays} ngày trước)`}`,
+    `- Role cao nhất: ${member.roles.highest?.name || 'unknown'}`,
+    `- Roles (${roles.length}): ${roles.length ? roles.slice(0, 20).join(', ') : 'không có role riêng'}`,
+    `- Quyền quản trị đáng chú ý: ${notablePermissions.length ? notablePermissions.join(', ') : 'không có'}`,
+    warnings.length
+      ? `- Warning active (${warnings.length}):\n${warnings.map(warning => `  - ${warning.id.slice(0, 8)} | ${warning.createdAt} | ${truncateLine(warning.reason, 160)}`).join('\n')}`
+      : '- Warning active: không có',
+    member.communicationDisabledUntil
+      ? `- Timeout đến: ${formatDateTime(member.communicationDisabledUntil)}`
+      : '- Timeout: không',
+    'Gợi ý: nếu cần xử lý, admin có thể yêu cầu bot warn/timeout/kick/ban bằng ngôn ngữ tự nhiên.',
+  ].join('\n');
 }
 
 function buildAssistantEmbed(args) {
@@ -529,6 +610,8 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(formatAssistantStatus(status));
       } else if (type === 'inspect_server') {
         results.push(await inspectServer(message, args));
+      } else if (type === 'inspect_member') {
+        results.push(await inspectMember(message, args));
       } else if (type === 'analyze_server') {
         const tasks = await listTasks({
           context,

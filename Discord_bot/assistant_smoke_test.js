@@ -70,6 +70,7 @@ async function main() {
     || isDangerousAction({ type: 'forget_memory' })
     || isDangerousAction({ type: 'diagnose_permissions' })
     || isDangerousAction({ type: 'inspect_server' })
+    || isDangerousAction({ type: 'inspect_member' })
     || isDangerousAction({ type: 'search_messages' })
     || isDangerousAction({ type: 'schedule_reminder' })
   ) {

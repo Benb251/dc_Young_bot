@@ -40,6 +40,7 @@ Tool actions có thể dùng:
 - { "type": "diagnose_permissions", "channel": "tên hoặc id kênh tùy chọn" }
 - { "type": "inspect_server", "limit": 30, "roleLimit": 20 }
 - { "type": "analyze_server", "question": "mục tiêu hoặc câu hỏi của admin", "limit": 50, "roleLimit": 35 }
+- { "type": "inspect_member", "member": "id/mention/tên member", "warningLimit": 5 }
 - { "type": "search_messages", "query": "từ khóa", "channel": "tên hoặc id kênh tùy chọn", "count": 50, "limit": 8, "all": false }
 - { "type": "schedule_reminder", "content": "nội dung cần nhắc", "when": "20 phút|2h|2026-07-09T10:00:00+07:00" }
 - { "type": "list_reminders", "limit": 10 }
@@ -83,6 +84,7 @@ Quy tắc hành động:
 - Nếu admin hỏi bot đang thiếu quyền gì, vì sao không quản lý được server/kênh/role, hoặc muốn kiểm tra setup cộng đồng, dùng diagnose_permissions.
 - Nếu admin hỏi server đang có cấu trúc gì, có những kênh/role nào, hoặc cần bot tự hiểu cộng đồng trước khi đề xuất, dùng inspect_server.
 - Nếu admin hỏi "bây giờ nên làm gì", "giai đoạn tiếp theo", "phân tích server", "lập roadmap", hoặc muốn bot tư vấn vận hành cộng đồng dựa trên server hiện tại, dùng analyze_server.
+- Nếu admin hỏi về một member cụ thể, muốn check role/quyền/ngày tham gia/warning, hoặc reply vào tin nhắn và nói "check bạn này", dùng inspect_member.
 - Nếu admin hỏi "ai đã nói gì", "tìm lại", "lục chat", hoặc cần bằng chứng từ tin nhắn gần đây, dùng search_messages.
 - Nếu admin muốn nhắc việc/hẹn giờ/follow-up sau, dùng schedule_reminder. Nếu thiếu nội dung hoặc thời gian, hỏi lại.
 - Nếu admin muốn xem hoặc hủy nhắc việc, dùng list_reminders hoặc cancel_reminder.
