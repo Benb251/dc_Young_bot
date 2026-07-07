@@ -23,6 +23,11 @@ Assistant memory:
 - `ASSISTANT_MAX_FACTS`, default `500`
 - `ASSISTANT_CONVERSATION_TURNS`, default `16`
 
+Assistant safety:
+
+- `ASSISTANT_CONFIRM_TTL_MS`, default `60000`
+- `ASSISTANT_AUDIT_CHANNEL_ID`, optional channel ID where assistant action audits are sent
+
 `Discord_bot/data/` is ignored by git because it may contain private server memory.
 
 ## How It Works
@@ -30,7 +35,9 @@ Assistant memory:
 - Normal members can mention the bot to ask questions naturally.
 - The owner can DM the bot with natural language commands.
 - Admins can mention the bot in-server and ask it to perform supported admin actions.
-- The assistant asks the model for a JSON decision, executes allowed tools, then reports the result.
+- The assistant asks the model for a JSON decision, executes allowed low-risk tools, then reports the result.
+- Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
+- Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
 
 ## Supported Tools
 

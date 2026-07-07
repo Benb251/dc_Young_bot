@@ -1,6 +1,19 @@
 const { getAIChatResponse } = require('./ai_helper.js');
 const { appendConversationTurn, getConversationContext, recallFacts } = require('./assistant_memory.js');
-const { executeAssistantActions, isAdminMessage } = require('./assistant_tools.js');
+const {
+  executeAssistantActions,
+  isAdminMessage,
+  isDangerousAction,
+} = require('./assistant_tools.js');
+const {
+  clearPendingConfirmation,
+  consumePendingConfirmation,
+  createPendingConfirmation,
+  getPendingConfirmation,
+  isCancelMessage,
+  isConfirmationMessage,
+} = require('./assistant_confirmations.js');
+const { auditAssistantEvent, describeAction } = require('./assistant_audit.js');
 
 const ASSISTANT_SYSTEM_PROMPT = `
 Bạn là "Đầu Não Tổ Young Phố", trợ lý AI thân thiện, chủ động và giỏi vận hành server Discord về 3D/Game Art/Design.
@@ -117,6 +130,12 @@ async function splitAndReply(message, text) {
   }
 }
 
+function formatActionPreview(actions) {
+  return actions
+    .map((action, index) => `${index + 1}. ${describeAction(action)}`)
+    .join('\n');
+}
+
 async function handleAssistantMessage(message, cleanContent) {
   const context = {
     guildId: message.guild?.id || null,
@@ -124,6 +143,46 @@ async function handleAssistantMessage(message, cleanContent) {
     userId: message.author.id,
   };
   const admin = isAdminMessage(message);
+
+  if (isCancelMessage(cleanContent) && getPendingConfirmation(context)) {
+    const pending = getPendingConfirmation(context);
+    clearPendingConfirmation(context);
+    await auditAssistantEvent({
+      message,
+      actions: pending.actions,
+      status: 'cancelled',
+      note: 'User cancelled pending assistant actions.',
+    });
+    await appendConversationTurn(context, {
+      role: 'assistant',
+      content: 'Đã hủy yêu cầu đang chờ xác nhận.',
+    });
+    await splitAndReply(message, 'Đã hủy yêu cầu đang chờ xác nhận.');
+    return;
+  }
+
+  if (isConfirmationMessage(cleanContent) && getPendingConfirmation(context)) {
+    const pending = consumePendingConfirmation(context);
+    const actionResults = await executeAssistantActions({
+      message,
+      actions: pending.actions,
+      context,
+    });
+    await auditAssistantEvent({
+      message,
+      actions: pending.actions,
+      actionResults,
+      status: 'executed_after_confirmation',
+    });
+
+    const finalResponse = actionResults.length
+      ? `Đã xác nhận và thực hiện.\n\nKết quả hành động:\n${actionResults.join('\n')}`
+      : 'Đã xác nhận, nhưng không có hành động nào để thực hiện.';
+    await appendConversationTurn(context, { role: 'assistant', content: finalResponse });
+    await splitAndReply(message, finalResponse);
+    return;
+  }
+
   const facts = await recallFacts(cleanContent, context, 8);
   const conversation = await getConversationContext(context);
   const imageUrls = getImageUrls(message);
@@ -152,10 +211,48 @@ async function handleAssistantMessage(message, cleanContent) {
     return;
   }
 
+  const actions = Array.isArray(decision.actions) ? decision.actions : [];
+  const hasDangerousAction = actions.some(isDangerousAction);
+
+  if (hasDangerousAction) {
+    const pending = createPendingConfirmation(context, {
+      actions,
+      reply: decision.reply,
+    });
+    await auditAssistantEvent({
+      message,
+      actions,
+      status: 'pending_confirmation',
+      note: `Expires in ${Math.round(pending.ttlMs / 1000)} seconds.`,
+    });
+
+    const responseParts = [];
+    if (decision.reply) responseParts.push(String(decision.reply));
+    responseParts.push([
+      'Mình đã chuẩn bị các hành động sau nhưng chưa chạy:',
+      formatActionPreview(actions),
+      `Gõ "xác nhận" trong ${Math.round(pending.ttlMs / 1000)} giây để thực hiện, hoặc "hủy" để bỏ qua.`,
+    ].join('\n'));
+
+    const finalResponse = responseParts.join('\n\n').trim();
+    await appendConversationTurn(context, {
+      role: 'assistant',
+      content: finalResponse,
+    });
+    await splitAndReply(message, finalResponse);
+    return;
+  }
+
   const actionResults = await executeAssistantActions({
     message,
-    actions: Array.isArray(decision.actions) ? decision.actions : [],
+    actions,
     context,
+  });
+  await auditAssistantEvent({
+    message,
+    actions,
+    actionResults,
+    status: 'executed',
   });
 
   const responseParts = [];

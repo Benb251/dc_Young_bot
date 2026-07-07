@@ -18,6 +18,28 @@ const ADMIN_ACTIONS = new Set([
   'timeout_member',
 ]);
 
+const DANGEROUS_ACTIONS = new Set([
+  'assign_role',
+  'ban_member',
+  'create_role',
+  'create_text_channel',
+  'delete_messages',
+  'kick_member',
+  'remove_role',
+  'rename_channel',
+  'send_message',
+  'set_channel_topic',
+  'timeout_member',
+]);
+
+function getActionType(action) {
+  return action?.type || action?.action || '';
+}
+
+function isDangerousAction(action) {
+  return DANGEROUS_ACTIONS.has(getActionType(action));
+}
+
 function isAdminMessage(message) {
   if (message.author.id === process.env.ADMIN_DISCORD_ID) return true;
   return Boolean(message.member?.permissions?.has(PermissionsBitField.Flags.Administrator));
@@ -294,5 +316,7 @@ async function executeAssistantActions({ message, actions = [], context }) {
 
 module.exports = {
   executeAssistantActions,
+  getActionType,
+  isDangerousAction,
   isAdminMessage,
 };
