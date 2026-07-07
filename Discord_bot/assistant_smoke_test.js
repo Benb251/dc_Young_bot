@@ -10,6 +10,7 @@ const memory = require('./assistant_memory.js');
 const confirmations = require('./assistant_confirmations.js');
 const { isDangerousAction } = require('./assistant_tools.js');
 const autoMemory = require('./assistant_auto_memory.js');
+const reminders = require('./assistant_reminders.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -37,6 +38,7 @@ async function main() {
     || isDangerousAction({ type: 'diagnose_permissions' })
     || isDangerousAction({ type: 'inspect_server' })
     || isDangerousAction({ type: 'search_messages' })
+    || isDangerousAction({ type: 'schedule_reminder' })
   ) {
     throw new Error('dangerous action classification failed');
   }
@@ -77,6 +79,15 @@ async function main() {
   }
   if (!autoMemory.hasSecretLikeText('AI_API_KEY=sk-test-secret-value')) {
     throw new Error('auto-memory secret guard failed');
+  }
+
+  const inTwentyMinutes = reminders.parseRelativeTime('20 phút', 1_000_000);
+  if (inTwentyMinutes !== 1_000_000 + 20 * 60_000) {
+    throw new Error('reminder relative time parsing failed');
+  }
+  const tomorrow = reminders.parseRelativeTime('ngày mai', 1_000_000);
+  if (tomorrow !== 1_000_000 + 24 * 60 * 60_000) {
+    throw new Error('reminder tomorrow parsing failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

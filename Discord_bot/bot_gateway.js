@@ -86,6 +86,7 @@ async function updateServerStats(client) {
 client.once('ready', () => {
   console.log(`🚀 Bot Gateway is online as ${client.user.tag}!`);
   console.log(`Listening for Q&A automation in ${QA_CHANNEL_IDS.length} channels...`);
+  startReminderLoop(client);
   
   // Run once immediately on start
   updateServerStats(client);
@@ -99,6 +100,7 @@ client.once('ready', () => {
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
 const { handleAssistantMessage } = require('./assistant_brain.js');
+const { startReminderLoop } = require('./assistant_reminders.js');
 
 // Helper to get status tag IDs from a forum channel
 function getStatusTagIds(parentChannel) {

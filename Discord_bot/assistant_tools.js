@@ -1,6 +1,7 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { getAIChatResponse } = require('./ai_helper.js');
 const { recallFacts, rememberFact } = require('./assistant_memory.js');
+const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
 
 const ADMIN_ACTIONS = new Set([
   'assign_role',
@@ -14,11 +15,14 @@ const ADMIN_ACTIONS = new Set([
   'list_channels',
   'remove_role',
   'rename_channel',
+  'cancel_reminder',
   'search_messages',
   'send_message',
   'set_channel_topic',
+  'schedule_reminder',
   'summarize_channel',
   'timeout_member',
+  'list_reminders',
 ]);
 
 const DANGEROUS_ACTIONS = new Set([
@@ -408,6 +412,21 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(await inspectServer(message, args));
       } else if (type === 'search_messages') {
         results.push(await searchMessages(message, args));
+      } else if (type === 'schedule_reminder') {
+        const reminder = await createReminder({ args, context, message });
+        results.push(reminder
+          ? `Đã đặt reminder ${reminder.id.slice(0, 8)} lúc ${reminder.dueAt}: ${reminder.content}`
+          : 'Không đặt được reminder: thiếu nội dung hoặc thời gian hợp lệ.');
+      } else if (type === 'list_reminders') {
+        const reminders = await listReminders(context, args.limit || 10);
+        results.push(reminders.length
+          ? reminders.map(reminder => `- ${reminder.id.slice(0, 8)} | ${reminder.dueAt} | ${reminder.content}`).join('\n')
+          : 'Chưa có reminder nào đang chờ.');
+      } else if (type === 'cancel_reminder') {
+        const reminder = await cancelReminder(context, args.id || args.reminderId || args.reminder_id);
+        results.push(reminder
+          ? `Đã hủy reminder ${reminder.id.slice(0, 8)}.`
+          : 'Không tìm thấy reminder đang chờ để hủy.');
       } else if (type === 'send_message') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
         if (!channel || !channel.isTextBased()) {

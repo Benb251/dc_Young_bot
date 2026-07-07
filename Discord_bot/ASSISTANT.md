@@ -25,6 +25,12 @@ Assistant memory:
 - `ASSISTANT_AUTO_MEMORY`, default `true`; set `false` to disable model-assisted memory extraction
 - `ASSISTANT_AUTO_MEMORY_LIMIT`, default `3`
 
+Assistant reminders:
+
+- `ASSISTANT_REMINDER_FILE`, default `Discord_bot/data/assistant_reminders.json`
+- `ASSISTANT_REMINDER_POLL_MS`, default `30000`
+- `ASSISTANT_MAX_REMINDERS`, default `500`
+
 Assistant safety:
 
 - `ASSISTANT_CONFIRM_TTL_MS`, default `60000`
@@ -40,6 +46,7 @@ Assistant safety:
 - The assistant asks the model for a JSON decision, executes allowed low-risk tools, then reports the result.
 - Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
+- Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
 - Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
 
 ## Supported Tools
@@ -51,6 +58,9 @@ Assistant safety:
 - `diagnose_permissions`: report missing server/channel permissions, role hierarchy limits, and an invite URL with recommended permissions.
 - `inspect_server`: read a server map with channel, category, role, member, and owner metadata.
 - `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
+- `schedule_reminder`: schedule a future reminder in the current channel or DM.
+- `list_reminders`: list pending reminders for the current admin/user.
+- `cancel_reminder`: cancel a pending reminder by ID prefix.
 - `create_text_channel`: create a text channel, optionally under a category.
 - `rename_channel`: rename a channel.
 - `set_channel_topic`: update a text channel topic.
