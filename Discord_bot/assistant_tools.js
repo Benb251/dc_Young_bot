@@ -16,6 +16,7 @@ const ADMIN_ACTIONS = new Set([
   'ban_member',
   'create_role',
   'create_text_channel',
+  'create_thread',
   'delete_messages',
   'diagnose_permissions',
   'clear_warning',
@@ -49,6 +50,7 @@ const DANGEROUS_ACTIONS = new Set([
   'ban_member',
   'create_role',
   'create_text_channel',
+  'create_thread',
   'delete_messages',
   'clear_warning',
   'kick_member',
@@ -258,6 +260,27 @@ function buildAssistantEmbed(args) {
   }
 
   return embed;
+}
+
+function normalizeAutoArchiveDuration(value) {
+  const minutes = Number(value) || 1440;
+  const allowed = [60, 1440, 4320, 10080];
+  return allowed.includes(minutes) ? minutes : 1440;
+}
+
+function resolveForumTagIds(channel, tags) {
+  if (!Array.isArray(tags) || !channel?.availableTags) return [];
+  return tags
+    .map(tag => String(tag).trim().toLowerCase())
+    .filter(Boolean)
+    .map(wanted => {
+      const byId = channel.availableTags.find(item => item.id === wanted);
+      if (byId) return byId.id;
+      const byName = channel.availableTags.find(item => item.name.toLowerCase().includes(wanted));
+      return byName?.id || null;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 async function summarizeChannel(channel, count) {
@@ -553,6 +576,38 @@ async function executeAssistantActions({ message, actions = [], context }) {
           reason: `Assistant command by ${message.author.tag}`,
         });
         results.push(`Đã tạo kênh <#${channel.id}>.`);
+      } else if (type === 'create_thread') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        const name = String(args.name || args.title || '').trim().slice(0, 100);
+        const content = String(args.content || args.message || args.description || '').trim().slice(0, 1900);
+        if (!channel || !name) {
+          results.push('Thiếu kênh hoặc tên thread cần tạo.');
+          continue;
+        }
+        if (channel.type === ChannelType.GuildForum) {
+          if (!content) {
+            results.push('Forum post cần nội dung mở đầu.');
+            continue;
+          }
+          const thread = await channel.threads.create({
+            name,
+            autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
+            appliedTags: resolveForumTagIds(channel, args.tags),
+            message: { content },
+            reason: `Assistant command by ${message.author.tag}`,
+          });
+          results.push(`Đã tạo forum post <#${thread.id}> trong #${channel.name}.`);
+        } else if (channel.threads?.create) {
+          const thread = await channel.threads.create({
+            name,
+            autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
+            reason: `Assistant command by ${message.author.tag}`,
+          });
+          if (content) await thread.send(content);
+          results.push(`Đã tạo thread <#${thread.id}> trong <#${channel.id}>.`);
+        } else {
+          results.push('Kênh này không hỗ trợ tạo thread.');
+        }
       } else if (type === 'rename_channel') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
         const name = normalizeChannelSlug(args.name || args.new_name);

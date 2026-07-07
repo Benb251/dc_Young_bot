@@ -74,6 +74,7 @@ Assistant safety:
 - `list_reminders`: list pending reminders for the current admin/user.
 - `cancel_reminder`: cancel a pending reminder by ID prefix.
 - `create_text_channel`: create a text channel, optionally under a category.
+- `create_thread`: create a thread in a text/announcement channel or a post in a forum channel.
 - `rename_channel`: rename a channel.
 - `set_channel_topic`: update a text channel topic.
 - `set_slowmode`: set or clear channel slowmode.

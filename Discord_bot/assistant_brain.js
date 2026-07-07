@@ -44,6 +44,7 @@ Tool actions có thể dùng:
 - { "type": "list_reminders", "limit": 10 }
 - { "type": "cancel_reminder", "id": "mã reminder" }
 - { "type": "create_text_channel", "name": "ten-kenh", "category": "tên hoặc id category", "topic": "topic tùy chọn" }
+- { "type": "create_thread", "channel": "kênh text/forum", "name": "tên thread/post", "content": "nội dung mở đầu", "tags": ["tag forum tùy chọn"], "autoArchiveDuration": 1440 }
 - { "type": "rename_channel", "channel": "kênh", "name": "tên mới" }
 - { "type": "set_channel_topic", "channel": "kênh", "topic": "topic mới" }
 - { "type": "set_slowmode", "channel": "kênh tùy chọn", "seconds": 10 }
@@ -70,6 +71,7 @@ Tool actions có thể dùng:
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
 - Nếu admin muốn đăng thông báo đẹp, announcement, nội quy, update hoặc tin ghim dạng trình bày gọn, dùng send_embed thay vì send_message.
+- Nếu admin muốn mở thread, tạo chủ đề thảo luận, tạo forum post hoặc bài hỏi đáp mới, dùng create_thread.
 - Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
 - Nếu admin muốn đổi tên hoặc archive thread hiện tại, dùng rename_thread/archive_thread.
 - Nếu admin hỏi bot đang chạy ổn không, đang dùng model gì, uptime, store memory/reminder/warning, health check, dùng assistant_status.

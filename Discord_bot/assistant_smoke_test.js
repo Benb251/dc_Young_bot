@@ -54,6 +54,7 @@ async function main() {
 
   if (
     !isDangerousAction({ type: 'ban_member' })
+    || !isDangerousAction({ type: 'create_thread' })
     || !isDangerousAction({ type: 'warn_member' })
     || !isDangerousAction({ type: 'clear_warning' })
     || !isDangerousAction({ type: 'send_embed' })
