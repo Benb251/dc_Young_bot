@@ -15,6 +15,9 @@ AI provider, compatible with 9router/OpenAI-style chat completions:
 - `AI_ENDPOINT`, default `http://localhost:20128/v1`
 - `AI_API_KEY`, optional bearer token
 - `AI_MODEL`, default `xai/grok-4`
+- `AI_MODEL_FALLBACKS`, optional comma-separated fallback models, for example `openai/gpt-5.5,xai/grok-4`
+- `AI_TIMEOUT_MS`, default `60000`
+- `AI_MAX_RETRIES`, default `1`
 - `AI_SYSTEM_PROMPT`, optional base system prompt used by `ai_helper.js`
 
 Assistant memory:
@@ -44,6 +47,7 @@ Assistant safety:
 - The owner can DM the bot with natural language commands.
 - Admins can mention the bot in-server and ask it to perform supported admin actions.
 - The assistant asks the model for a JSON decision, executes allowed low-risk tools, then reports the result.
+- AI calls use the primary model first, then fallback models if configured, with bounded timeout and retry handling.
 - Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.

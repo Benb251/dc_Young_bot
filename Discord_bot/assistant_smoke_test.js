@@ -11,6 +11,7 @@ const confirmations = require('./assistant_confirmations.js');
 const { isDangerousAction } = require('./assistant_tools.js');
 const autoMemory = require('./assistant_auto_memory.js');
 const reminders = require('./assistant_reminders.js');
+const aiHelper = require('./ai_helper.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -88,6 +89,19 @@ async function main() {
   const tomorrow = reminders.parseRelativeTime('ngày mai', 1_000_000);
   if (tomorrow !== 1_000_000 + 24 * 60 * 60_000) {
     throw new Error('reminder tomorrow parsing failed');
+  }
+
+  const modelChain = aiHelper.getModelChain({
+    model: 'xai/grok-4',
+    fallbackModels: 'openai/gpt-5.5,xai/grok-4',
+  });
+  if (modelChain.length !== 2 || modelChain[1] !== 'openai/gpt-5.5') {
+    throw new Error('AI model chain parsing failed');
+  }
+
+  const cleaned = aiHelper.cleanRouterResponseText('data: {"choices":[{"message":{"content":"ok"}}]}\n\ndata: [DONE]');
+  if (!cleaned.includes('"content":"ok"') || cleaned.includes('[DONE]')) {
+    throw new Error('AI router response cleanup failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });
