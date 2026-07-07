@@ -53,6 +53,9 @@ Tool actions có thể dùng:
 - { "type": "kick_member", "member": "id/mention/tên", "reason": "lý do" }
 - { "type": "ban_member", "member": "id/mention/tên", "reason": "lý do", "deleteMessageSeconds": 0 }
 - { "type": "timeout_member", "member": "id/mention/tên", "minutes": 10, "reason": "lý do" }
+- { "type": "warn_member", "member": "id/mention/tên", "reason": "lý do", "notify": true }
+- { "type": "list_warnings", "member": "id/mention/tên tùy chọn", "limit": 10 }
+- { "type": "clear_warning", "id": "mã warning" }
 - { "type": "remember", "scope": "global|guild|channel|user", "title": "ngắn", "content": "điều cần nhớ", "tags": ["tag"] }
 - { "type": "recall_memory", "query": "từ khóa", "limit": 5 }
 - { "type": "list_memory", "query": "từ khóa tùy chọn", "limit": 12 }
@@ -65,6 +68,7 @@ Quy tắc hành động:
 - Nếu admin hỏi "ai đã nói gì", "tìm lại", "lục chat", hoặc cần bằng chứng từ tin nhắn gần đây, dùng search_messages.
 - Nếu admin muốn nhắc việc/hẹn giờ/follow-up sau, dùng schedule_reminder. Nếu thiếu nội dung hoặc thời gian, hỏi lại.
 - Nếu admin muốn xem hoặc hủy nhắc việc, dùng list_reminders hoặc cancel_reminder.
+- Nếu admin muốn xử lý vi phạm nhẹ trước khi timeout/kick/ban, dùng warn_member. Dùng list_warnings để xem lịch sử cảnh cáo, clear_warning để xoá cảnh cáo sai.
 - Nếu người dùng nói "nhớ", "ghi nhớ", "lưu lại", hãy dùng remember.
 - Nếu người dùng hỏi thông tin đã từng nói, dùng recall_memory hoặc dựa vào phần trí nhớ liên quan trong ngữ cảnh.
 - Nếu admin muốn xem/quản lý trí nhớ của bot, dùng list_memory. Nếu admin bảo bot quên/xóa memory, dùng forget_memory.

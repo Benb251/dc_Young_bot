@@ -7,6 +7,7 @@ const {
   rememberFact,
 } = require('./assistant_memory.js');
 const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
+const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 
 const ADMIN_ACTIONS = new Set([
   'assign_role',
@@ -15,9 +16,11 @@ const ADMIN_ACTIONS = new Set([
   'create_text_channel',
   'delete_messages',
   'diagnose_permissions',
+  'clear_warning',
   'inspect_server',
   'kick_member',
   'list_channels',
+  'list_warnings',
   'lock_channel',
   'remove_role',
   'rename_channel',
@@ -30,6 +33,7 @@ const ADMIN_ACTIONS = new Set([
   'summarize_channel',
   'timeout_member',
   'unlock_channel',
+  'warn_member',
   'list_reminders',
 ]);
 
@@ -39,6 +43,7 @@ const DANGEROUS_ACTIONS = new Set([
   'create_role',
   'create_text_channel',
   'delete_messages',
+  'clear_warning',
   'kick_member',
   'lock_channel',
   'remove_role',
@@ -48,6 +53,7 @@ const DANGEROUS_ACTIONS = new Set([
   'set_slowmode',
   'timeout_member',
   'unlock_channel',
+  'warn_member',
 ]);
 
 function getActionType(action) {
@@ -576,6 +582,48 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
         await member.timeout(minutes * 60 * 1000, String(args.reason || `Assistant command by ${message.author.tag}`).slice(0, 512));
         results.push(`Đã timeout ${member.displayName} trong ${minutes} phút.`);
+      } else if (type === 'warn_member') {
+        const member = await findMember(guild, args.member || args.user || args.userId);
+        if (!guild || !member) {
+          results.push('Không tìm thấy member để cảnh cáo.');
+          continue;
+        }
+        const warning = await createWarning({
+          guildId: guild.id,
+          memberId: member.id,
+          moderatorId: message.author.id,
+          reason: args.reason || args.content || args.message,
+          contextMessageId: message.id,
+        });
+        if (!warning) {
+          results.push('Không tạo được warning hợp lệ.');
+          continue;
+        }
+        if (args.notify !== false) {
+          await member.send(`Bạn đã nhận cảnh cáo trong server ${guild.name}: ${warning.reason}`).catch(() => null);
+        }
+        results.push(`Đã cảnh cáo ${member.displayName}. Warning ID: ${warning.id.slice(0, 8)}.`);
+      } else if (type === 'list_warnings') {
+        const member = args.member || args.user || args.userId
+          ? await findMember(guild, args.member || args.user || args.userId)
+          : null;
+        const warnings = await listWarnings({
+          guildId: guild?.id,
+          memberId: member?.id || args.memberId || null,
+          limit: args.limit || 10,
+        });
+        results.push(warnings.length
+          ? warnings.map(warning => `- ${warning.id.slice(0, 8)} | <@${warning.memberId}> | ${warning.createdAt} | ${warning.reason}`).join('\n')
+          : 'Chưa có warning đang active phù hợp.');
+      } else if (type === 'clear_warning') {
+        const warning = await clearWarning({
+          guildId: guild?.id,
+          id: args.id || args.warningId || args.warning_id,
+          moderatorId: message.author.id,
+        });
+        results.push(warning
+          ? `Đã xoá warning ${warning.id.slice(0, 8)} của <@${warning.memberId}>.`
+          : 'Không tìm thấy warning active để xoá.');
       } else if (type === 'summarize_channel') {
         const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
         if (!channel?.messages) {

@@ -3,7 +3,9 @@ const os = require('os');
 const path = require('path');
 
 const tempMemoryPath = path.join(os.tmpdir(), `assistant-memory-${Date.now()}.json`);
+const tempWarningPath = path.join(os.tmpdir(), `assistant-warnings-${Date.now()}.json`);
 process.env.ASSISTANT_MEMORY_FILE = tempMemoryPath;
+process.env.ASSISTANT_WARNING_FILE = tempWarningPath;
 
 const { extractJson } = require('./assistant_brain.js');
 const memory = require('./assistant_memory.js');
@@ -12,6 +14,7 @@ const { isDangerousAction } = require('./assistant_tools.js');
 const autoMemory = require('./assistant_auto_memory.js');
 const reminders = require('./assistant_reminders.js');
 const aiHelper = require('./ai_helper.js');
+const warnings = require('./assistant_warnings.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -48,6 +51,8 @@ async function main() {
 
   if (
     !isDangerousAction({ type: 'ban_member' })
+    || !isDangerousAction({ type: 'warn_member' })
+    || !isDangerousAction({ type: 'clear_warning' })
     || !isDangerousAction({ type: 'lock_channel' })
     || !isDangerousAction({ type: 'set_slowmode' })
     || isDangerousAction({ type: 'recall_memory' })
@@ -120,12 +125,32 @@ async function main() {
     throw new Error('AI router response cleanup failed');
   }
 
+  const warning = await warnings.createWarning({
+    guildId: 'guild',
+    memberId: 'member',
+    moderatorId: 'mod',
+    reason: 'Test warning',
+  });
+  if (!warning?.id) {
+    throw new Error('warning creation failed');
+  }
+  const activeWarnings = await warnings.listWarnings({ guildId: 'guild', memberId: 'member' });
+  if (activeWarnings.length !== 1 || activeWarnings[0].reason !== 'Test warning') {
+    throw new Error('warning listing failed');
+  }
+  const clearedWarning = await warnings.clearWarning({ guildId: 'guild', id: warning.id.slice(0, 8), moderatorId: 'mod' });
+  if (!clearedWarning || clearedWarning.status !== 'cleared') {
+    throw new Error('warning clearing failed');
+  }
+
   await fs.rm(tempMemoryPath, { force: true });
+  await fs.rm(tempWarningPath, { force: true });
   console.log('assistant smoke test passed');
 }
 
 main().catch(async error => {
   await fs.rm(tempMemoryPath, { force: true }).catch(() => null);
+  await fs.rm(tempWarningPath, { force: true }).catch(() => null);
   console.error(error);
   process.exit(1);
 });

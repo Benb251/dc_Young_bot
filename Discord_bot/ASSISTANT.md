@@ -34,6 +34,11 @@ Assistant reminders:
 - `ASSISTANT_REMINDER_POLL_MS`, default `30000`
 - `ASSISTANT_MAX_REMINDERS`, default `500`
 
+Assistant moderation:
+
+- `ASSISTANT_WARNING_FILE`, default `Discord_bot/data/assistant_warnings.json`
+- `ASSISTANT_MAX_WARNINGS`, default `1000`
+
 Assistant safety:
 
 - `ASSISTANT_CONFIRM_TTL_MS`, default `60000`
@@ -73,6 +78,9 @@ Assistant safety:
 - `assign_role` / `remove_role`: manage member roles by mention, ID, or name.
 - `create_role`: create a new role.
 - `timeout_member`: timeout a member for a bounded number of minutes.
+- `warn_member`: record a moderation warning and optionally DM the member.
+- `list_warnings`: list active warnings, optionally for one member.
+- `clear_warning`: clear an active warning by ID prefix.
 - `kick_member` / `ban_member`: remove abusive members when clearly requested by an admin.
 - `remember`: store a scoped memory fact.
 - `recall_memory`: search stored memory.
