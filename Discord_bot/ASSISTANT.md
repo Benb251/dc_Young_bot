@@ -74,6 +74,8 @@ Assistant safety:
 - `kick_member` / `ban_member`: remove abusive members when clearly requested by an admin.
 - `remember`: store a scoped memory fact.
 - `recall_memory`: search stored memory.
+- `list_memory`: list visible memory facts with short IDs.
+- `forget_memory`: delete a visible memory fact by ID prefix or a unique query match.
 
 Admin tools are guarded by `ADMIN_DISCORD_ID` or Discord Administrator permission. Non-admin users can chat and use memory-style interactions, but cannot execute server actions.
 

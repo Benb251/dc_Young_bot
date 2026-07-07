@@ -82,6 +82,48 @@ async function recallFacts(query, context, limit = 8) {
     .map(item => item.fact);
 }
 
+function factVisibleInContext(fact, context) {
+  if (fact.scope === 'global') return true;
+  if (fact.scope === 'guild') return fact.guildId === context.guildId;
+  if (fact.scope === 'channel') return fact.guildId === context.guildId && fact.channelId === context.channelId;
+  if (fact.scope === 'user') return fact.userId === context.userId;
+  return false;
+}
+
+async function listFacts({ query = '', context, limit = 12 } = {}) {
+  const store = await ensureStore();
+  const max = Math.min(Math.max(Number(limit) || 12, 1), 50);
+  const terms = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  return store.facts
+    .filter(fact => factVisibleInContext(fact, context))
+    .filter(fact => {
+      if (!terms.length) return true;
+      const haystack = `${fact.title || ''} ${fact.content || ''} ${(fact.tags || []).join(' ')}`.toLowerCase();
+      return terms.every(term => haystack.includes(term));
+    })
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, max);
+}
+
+async function forgetFact({ id, query = '', context } = {}) {
+  const store = await ensureStore();
+  const wantedId = String(id || '').trim();
+  const candidates = store.facts.filter(fact => factVisibleInContext(fact, context));
+  let fact = wantedId
+    ? candidates.find(item => item.id === wantedId || item.id.startsWith(wantedId))
+    : null;
+
+  if (!fact && query) {
+    const matches = await listFacts({ query, context, limit: 2 });
+    if (matches.length === 1) fact = matches[0];
+  }
+
+  if (!fact) return null;
+  store.facts = store.facts.filter(item => item.id !== fact.id);
+  await saveStore(store);
+  return fact;
+}
+
 async function appendConversationTurn(context, turn) {
   const store = await ensureStore();
   const key = buildContextKey(context);
@@ -102,7 +144,9 @@ async function getConversationContext(context) {
 
 module.exports = {
   appendConversationTurn,
+  forgetFact,
   getConversationContext,
+  listFacts,
   recallFacts,
   rememberFact,
 };

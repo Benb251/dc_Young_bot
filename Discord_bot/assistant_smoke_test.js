@@ -33,9 +33,23 @@ async function main() {
     throw new Error('memory recall failed');
   }
 
+  const listedFacts = await memory.listFacts({ context, limit: 5 });
+  if (!listedFacts.length || !listedFacts[0].title.includes('Preferred')) {
+    throw new Error('memory list failed');
+  }
+  const forgotten = await memory.forgetFact({ id: listedFacts[0].id.slice(0, 8), context });
+  if (!forgotten || forgotten.id !== listedFacts[0].id) {
+    throw new Error('memory forget failed');
+  }
+  const afterForget = await memory.recallFacts('Blender feedback', context, 3);
+  if (afterForget.length) {
+    throw new Error('memory forget did not remove fact');
+  }
+
   if (
     !isDangerousAction({ type: 'ban_member' })
     || isDangerousAction({ type: 'recall_memory' })
+    || isDangerousAction({ type: 'forget_memory' })
     || isDangerousAction({ type: 'diagnose_permissions' })
     || isDangerousAction({ type: 'inspect_server' })
     || isDangerousAction({ type: 'search_messages' })

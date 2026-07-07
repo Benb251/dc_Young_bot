@@ -1,6 +1,11 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { getAIChatResponse } = require('./ai_helper.js');
-const { recallFacts, rememberFact } = require('./assistant_memory.js');
+const {
+  forgetFact,
+  listFacts,
+  recallFacts,
+  rememberFact,
+} = require('./assistant_memory.js');
 const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
 
 const ADMIN_ACTIONS = new Set([
@@ -569,6 +574,20 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(facts.length
           ? facts.map(fact => `- ${fact.title}: ${fact.content}`).join('\n')
           : 'Chưa tìm thấy trí nhớ liên quan.');
+      } else if (type === 'list_memory') {
+        const facts = await listFacts({ query: args.query || '', context, limit: args.limit || 12 });
+        results.push(facts.length
+          ? facts.map(fact => `- ${fact.id.slice(0, 8)} | [${fact.scope}] ${fact.title}: ${fact.content}`).join('\n')
+          : 'Chưa có trí nhớ nào phù hợp trong phạm vi hiện tại.');
+      } else if (type === 'forget_memory') {
+        const fact = await forgetFact({
+          id: args.id || args.memoryId || args.memory_id,
+          query: args.query || '',
+          context,
+        });
+        results.push(fact
+          ? `Đã quên memory ${fact.id.slice(0, 8)}: ${fact.title}.`
+          : 'Không tìm thấy đúng một memory phù hợp để quên.');
       } else {
         results.push(`Chưa hỗ trợ hành động: ${type}.`);
       }
