@@ -1,0 +1,18 @@
+{
+  "name": "quan-hem-bot",
+  "version": "1.0.0",
+  "description": "Quản Hẻm Bot — Discord bot for Tổ Young Phố running on Cloudflare Workers",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord-interactions": "^3.4.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

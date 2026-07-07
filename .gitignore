@@ -1,0 +1,29 @@
+# Node modules
+node_modules/
+
+# Environment configurations
+.env
+.env.local
+.env.production
+.env.development
+.env.staging
+.env.*.local
+
+# IDE configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Output / Build
+dist/
+build/
+.wrangler/
+.oxlintrc.json
+
+# Logs
+*.log
+npm-debug.log*

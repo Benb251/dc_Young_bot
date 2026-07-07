@@ -1,0 +1,19 @@
+name = "quan-hem-bot"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# These are non-secret config vars
+GUILD_ID = "1522638975456772227"
+
+# Secret vars (set via: wrangler secret put DISCORD_TOKEN)
+# DISCORD_TOKEN
+# DISCORD_PUBLIC_KEY
+# DISCORD_APPLICATION_ID
+# DASHBOARD_SECRET
+
+DASHBOARD_ORIGIN = "*"
+
+[[kv_namespaces]]
+binding = "BOT_CONFIG"
+id = "1e92abae2fac4fbe8f6f266fe1339a90"
