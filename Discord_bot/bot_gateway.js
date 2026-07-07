@@ -96,7 +96,7 @@ client.once('ready', () => {
 });
 
 // Import helper AI
-const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
+const { getAIChatResponse, classifyCrosspostTopic, parseAdminCommand } = require('./ai_helper.js');
 
 // Helper to get status tag IDs from a forum channel
 function getStatusTagIds(parentChannel) {
@@ -286,6 +286,49 @@ client.on('messageCreate', async (message) => {
       let cleanContent = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
       if (!cleanContent) {
         cleanContent = "Chào bot!";
+      }
+
+      // Xử lý AI Admin Commands (Ra lệnh bằng ngôn ngữ tự nhiên)
+      if (cleanContent.toLowerCase().startsWith('ra lệnh:') || cleanContent.toLowerCase().startsWith('ralenh:')) {
+        const adminId = process.env.ADMIN_DISCORD_ID;
+        if (message.author.id !== adminId) {
+          await message.reply('⚠️ Cảnh báo: Bạn không có quyền hạn cấp cao để sử dụng lệnh Admin!');
+          return;
+        }
+
+        const instruction = cleanContent.replace(/^(ra lệnh:|ralenh:)\s*/i, '').trim();
+        console.log(`👑 [ADMIN COMMAND] Processing instruction from owner: "${instruction}"`);
+        
+        await message.channel.sendTyping();
+        const cmdResult = await parseAdminCommand(instruction);
+        console.log(`👑 [ADMIN COMMAND] AI parsed result:`, cmdResult);
+
+        if (cmdResult.action === 'send_message') {
+          const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
+          // Tìm channel theo tên
+          const targetChannel = message.guild.channels.cache.find(c => c.name === targetChannelName);
+          if (targetChannel) {
+            await targetChannel.send(cmdResult.content);
+            await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh <#${targetChannel.id}> thành công!`);
+          } else {
+            await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\``);
+          }
+        } 
+        else if (cmdResult.action === 'delete_messages') {
+          const deleteCount = parseInt(cmdResult.count) || 0;
+          if (deleteCount > 0 && deleteCount <= 100) {
+            // Xóa tin nhắn trong kênh hiện tại
+            await message.channel.bulkDelete(deleteCount + 1).catch(console.error); // +1 để xóa luôn cả tin nhắn ra lệnh
+            const successMsg = await message.channel.send(`✅ Đã thực hiện: Xóa thành công **${deleteCount}** tin nhắn.`);
+            setTimeout(() => successMsg.delete().catch(() => null), 3000); // Tự động xóa thông báo sau 3s
+          } else {
+            await message.reply('❌ Số lượng tin nhắn cần xóa phải nằm trong khoảng từ 1 đến 100.');
+          }
+        } 
+        else {
+          await message.reply(`❓ Bot không hiểu hoặc chưa hỗ trợ lệnh này. Chi tiết: ${cmdResult.message || 'Lệnh không xác định'}`);
+        }
+        return;
       }
 
       // Lấy hình ảnh đính kèm

@@ -134,4 +134,52 @@ Yêu cầu bắt buộc:
   }
 }
 
-module.exports = { getAIChatResponse, classifyCrosspostTopic };
+async function parseAdminCommand(instruction) {
+  const systemPrompt = `Bạn là bộ não phân tích lệnh của Discord Bot. Hãy phân tích yêu cầu bằng ngôn ngữ tự nhiên của Admin và bóc tách thành một cấu trúc dữ liệu JSON để bot thực thi.
+
+Các lệnh được hỗ trợ:
+1. Gửi tin nhắn:
+   Yêu cầu: Gửi tin nhắn vào kênh nào đó với nội dung gì đó.
+   JSON trả về:
+   {
+     "action": "send_message",
+     "channel_name": "tên-kênh-nhận",
+     "content": "nội dung tin nhắn cần gửi"
+   }
+
+2. Xóa tin nhắn:
+   Yêu cầu: Xóa N tin nhắn trong kênh hiện tại hoặc kênh nào đó.
+   JSON trả về:
+   {
+     "action": "delete_messages",
+     "channel_name": "tên-kênh-nếu-có",
+     "count": 5
+   }
+
+Yêu cầu bắt buộc:
+1. Chỉ trả về một chuỗi JSON hợp lệ có cấu trúc như trên. Không kèm bất kỳ giải thích, markdown codeblock (\`\`\`json) hay chữ nào khác.
+2. Nếu lệnh không thuộc danh sách trên hoặc không rõ ràng, hãy trả về:
+   { "action": "unknown", "message": "Mô tả lý do không hiểu lệnh" }`;
+
+  try {
+    const responseText = await getAIChatResponse(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: instruction }
+      ]
+    );
+
+    // Dọn dẹp markdown codeblock nếu AI tự bọc
+    let cleanJson = responseText.trim();
+    if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+    }
+
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error('Failed to parse admin command:', error);
+    return { action: 'unknown', message: 'Lỗi parse JSON' };
+  }
+}
+
+module.exports = { getAIChatResponse, classifyCrosspostTopic, parseAdminCommand };
