@@ -277,6 +277,8 @@ async function markThreadAsSolved(thread, triggerUser) {
 // ── 2. Event: Message Created (Detect triggers like "đã giải quyết" or "/done", or tag bot for AI) ──
 client.on('messageCreate', async (message) => {
   try {
+    if (message.author.bot) return;
+
     // I. Xử lý tin nhắn riêng (DM) từ Admin
     const isDM = !message.guild;
     if (isDM) {
