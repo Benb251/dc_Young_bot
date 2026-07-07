@@ -56,6 +56,7 @@ async function main() {
     !isDangerousAction({ type: 'ban_member' })
     || !isDangerousAction({ type: 'warn_member' })
     || !isDangerousAction({ type: 'clear_warning' })
+    || !isDangerousAction({ type: 'send_embed' })
     || !isDangerousAction({ type: 'lock_channel' })
     || !isDangerousAction({ type: 'set_slowmode' })
     || isDangerousAction({ type: 'recall_memory' })

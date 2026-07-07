@@ -32,6 +32,7 @@ Bạn PHẢI trả về JSON hợp lệ, không markdown, không code block:
 
 Tool actions có thể dùng:
 - { "type": "send_message", "channel": "tên hoặc id kênh", "content": "nội dung" }
+- { "type": "send_embed", "channel": "tên hoặc id kênh", "title": "tiêu đề", "description": "nội dung", "color": "#5865F2", "fields": [{"name":"mục","value":"nội dung","inline":false}], "footer": "tùy chọn" }
 - { "type": "summarize_channel", "channel": "tên hoặc id kênh", "count": 50 }
 - { "type": "delete_messages", "count": 5 }
 - { "type": "list_channels" }
@@ -64,6 +65,7 @@ Tool actions có thể dùng:
 
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
+- Nếu admin muốn đăng thông báo đẹp, announcement, nội quy, update hoặc tin ghim dạng trình bày gọn, dùng send_embed thay vì send_message.
 - Nếu admin hỏi bot đang chạy ổn không, đang dùng model gì, uptime, store memory/reminder/warning, health check, dùng assistant_status.
 - Nếu admin hỏi bot đang thiếu quyền gì, vì sao không quản lý được server/kênh/role, hoặc muốn kiểm tra setup cộng đồng, dùng diagnose_permissions.
 - Nếu admin hỏi server đang có cấu trúc gì, có những kênh/role nào, hoặc cần bot tự hiểu cộng đồng trước khi đề xuất, dùng inspect_server.

@@ -62,6 +62,7 @@ Assistant safety:
 ## Supported Tools
 
 - `send_message`: send a message to a named channel or channel ID.
+- `send_embed`: send a styled Discord embed announcement with title, description, fields, color, images, and footer.
 - `assistant_status`: report bot uptime, model routing, cache counts, and assistant store health.
 - `summarize_channel`: summarize recent messages from a channel.
 - `delete_messages`: delete recent messages in the current channel.

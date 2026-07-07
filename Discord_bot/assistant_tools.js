@@ -1,4 +1,4 @@
-const { ChannelType, PermissionsBitField } = require('discord.js');
+const { ChannelType, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { getAIChatResponse } = require('./ai_helper.js');
 const {
   forgetFact,
@@ -28,6 +28,7 @@ const ADMIN_ACTIONS = new Set([
   'rename_channel',
   'cancel_reminder',
   'search_messages',
+  'send_embed',
   'send_message',
   'set_channel_topic',
   'set_slowmode',
@@ -50,6 +51,7 @@ const DANGEROUS_ACTIONS = new Set([
   'lock_channel',
   'remove_role',
   'rename_channel',
+  'send_embed',
   'send_message',
   'set_channel_topic',
   'set_slowmode',
@@ -191,6 +193,33 @@ function truncateLine(value, max = 220) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
   return `${text.slice(0, max - 3)}...`;
+}
+
+function buildAssistantEmbed(args) {
+  const embed = new EmbedBuilder();
+  const title = String(args.title || '').trim();
+  const description = String(args.description || args.content || '').trim();
+  const color = String(args.color || '#5865F2').trim();
+
+  if (title) embed.setTitle(title.slice(0, 256));
+  if (description) embed.setDescription(description.slice(0, 4096));
+  if (/^#[0-9a-f]{6}$/i.test(color)) embed.setColor(color);
+  if (args.url) embed.setURL(String(args.url).slice(0, 2048));
+  if (args.image) embed.setImage(String(args.image).slice(0, 2048));
+  if (args.thumbnail) embed.setThumbnail(String(args.thumbnail).slice(0, 2048));
+  if (args.footer) embed.setFooter({ text: String(args.footer).slice(0, 2048) });
+  if (args.timestamp !== false) embed.setTimestamp();
+
+  const fields = Array.isArray(args.fields) ? args.fields.slice(0, 10) : [];
+  for (const field of fields) {
+    const name = String(field.name || '').trim().slice(0, 256);
+    const value = String(field.value || '').trim().slice(0, 1024);
+    if (name && value) {
+      embed.addFields({ name, value, inline: Boolean(field.inline) });
+    }
+  }
+
+  return embed;
 }
 
 async function summarizeChannel(channel, count) {
@@ -457,6 +486,16 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
         await channel.send(String(args.content || '').slice(0, 1900));
         results.push(`Đã gửi tin nhắn vào <#${channel.id}>.`);
+      } else if (type === 'send_embed') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
+        if (!channel || !channel.isTextBased()) {
+          results.push('Không tìm thấy kênh để gửi embed.');
+          continue;
+        }
+        const embed = buildAssistantEmbed(args);
+        const content = args.message ? String(args.message).slice(0, 1900) : undefined;
+        await channel.send({ content, embeds: [embed] });
+        results.push(`Đã gửi embed vào <#${channel.id}>.`);
       } else if (type === 'create_text_channel') {
         if (!guild) {
           results.push('Không thể kết nối tới server để tạo kênh.');
