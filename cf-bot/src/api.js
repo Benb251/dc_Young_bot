@@ -1,4 +1,6 @@
-import { ROLES, GUILD_ID, DISCORD_API, WELCOME_GIFS, CHANNELS } from './config.js';
+import { ROLES, GUILD_ID, CHANNELS } from './config.js';
+import { discordRequest, updateDiscordMessage } from './discord.js';
+import { getBotConfig, getWelcomeGifs } from './storage.js';
 
 async function updateDiscordPanel(type, env, mergedConfig) {
   let channelId = '';
@@ -29,29 +31,21 @@ async function updateDiscordPanel(type, env, mergedConfig) {
   }
 
   if (payload && channelId && messageId) {
-    const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages/${messageId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Discord API Error (${res.status}): ${errText}`);
-    }
+    await updateDiscordMessage(env, channelId, messageId, payload);
   }
 }
 
 export async function handleApiRequest(request, env) {
   const url = new URL(request.url);
+  const requestOrigin = request.headers.get('Origin');
+  const allowedOrigin = env.DASHBOARD_ORIGIN || requestOrigin || '*';
 
   // Thêm CORS headers
   const corsHeaders = {
-    'Access-Control-Allow-Origin': env.DASHBOARD_ORIGIN || '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Dashboard-Key',
+    'Vary': 'Origin',
   };
 
   if (request.method === 'OPTIONS') {
@@ -66,21 +60,14 @@ export async function handleApiRequest(request, env) {
 
   // Xác thực API Key (Secret)
   const authHeader = request.headers.get('X-Dashboard-Key');
-  if (authHeader !== env.DASHBOARD_SECRET) {
+  if (!env.DASHBOARD_SECRET || authHeader !== env.DASHBOARD_SECRET) {
     return json({ error: 'Unauthorized' }, 401);
   }
 
   // ── GET /api/channels ────────────────────────────────────────────
   if (request.method === 'GET' && url.pathname === '/api/channels') {
     try {
-      const res = await fetch(
-        `${DISCORD_API}/guilds/${GUILD_ID}/channels`,
-        { headers: { Authorization: `Bot ${env.DISCORD_TOKEN}` } }
-      );
-      if (!res.ok) {
-        throw new Error(`Failed to fetch channels from Discord: ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await discordRequest(env, `/guilds/${GUILD_ID}/channels`);
       
       const channels = data.map(c => ({
         id: c.id,
@@ -98,8 +85,7 @@ export async function handleApiRequest(request, env) {
 
   // ── GET /api/config ─────────────────────────────────────────────
   if (request.method === 'GET' && url.pathname === '/api/config') {
-    const gifsStr = await env.BOT_CONFIG.get('WELCOME_GIFS');
-    const gifs = gifsStr ? JSON.parse(gifsStr) : WELCOME_GIFS;
+    const gifs = await getWelcomeGifs(env);
     return json({ gifs });
   }
 
@@ -118,27 +104,7 @@ export async function handleApiRequest(request, env) {
 
   // ── GET /api/bot-config ──────────────────────────────────────────
   if (request.method === 'GET' && url.pathname === '/api/bot-config') {
-    const configStr = await env.BOT_CONFIG.get('BOT_CONFIG');
-    const defaults = {
-      welcomeTitle: '🎉 Chào mừng đến với Tổ Young Phố!',
-      welcomeDescription: `Chào mừng <@{userId}> đến với nơi những đứa trẻ phố phường chia sẻ và phát triển kỹ năng **3D Game Art & Design**.\n\n**Để bắt đầu:**\n• Đọc <#${'{rulesChannel}'}> để hiểu quy tắc\n• Đến <#${'{rolesChannel}'}> để chọn vai trò\n\nChúc bạn có những trải nghiệm vui vẻ! 🔥\nBạn là thành viên thứ **{memberCount}** của Tổ Young Phố!`,
-      welcomeColor: '#00B0F4',
-      visaTitle: '🏡 Chào mừng đến với Tổ Young Phố!',
-      visaDescription: `Bạn đang đứng trước cổng **Tổ Young Phố** — cộng đồng chia sẻ, học hỏi và cháy hết mình với đam mê 3D, Game & 2D Design!\n\n**Trước khi vào Phố, hãy nhận Visa của bạn** ⬇️`,
-      visaButtonLabel: 'Nhận Visa vào Phố 🏡',
-      rolePanelThumbnail: 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnJvZ2IzcnhzMjdjcHlxODVkMWZxbDdheWs1cjViMzE1OWluamRlaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/j91j9wdUh3rm8/giphy.gif',
-      rulesTitle: '📜 NỘI QUY TỔ YOUNG PHỐ',
-      rulesDescription: 'Chào mừng anh em đến với **Tổ Young Phố** - Cộng đồng chia sẻ, học hỏi và cháy hết mình với đam mê 3D, Game & 2D Design! Để giữ cho "khu phố" luôn văn minh và ngăn nắp, anh em vui lòng tuân thủ các quy tắc dưới đây nhé:\n\n1️⃣ **Tôn trọng lẫn nhau**\nKhông chửi bới, công kích cá nhân, phân biệt vùng miền hay sử dụng ngôn từ thù ghét. Mọi đóng góp và nhận xét (đặc biệt trong phần khoe tác phẩm) đều phải mang tính chất xây dựng.\n\n2️⃣ **Đúng kênh, đúng chỗ**\nServer đã được chia theo từng phần mềm (Blender, Maya, ZBrush...). Hãy chat và đặt câu hỏi ở đúng danh mục tương ứng để được hỗ trợ tốt nhất.\n\n3️⃣ **Sử dụng Diễn đàn (Forum) hiệu quả**\nVới các kênh Hỏi - Đáp hoặc Khoe Work, hãy tạo **Post mới** thay vì chat tràn lan. Nhớ đặt tiêu đề rõ ràng để mọi người dễ dàng tìm kiếm và hỗ trợ.\n\n4️⃣ **Không Spam & Quảng cáo**\nCấm spam tin nhắn, gửi link độc hại, nội dung NSFW (18+), hoặc tự ý quảng cáo/mua bán khi chưa có sự cho phép của Ban Quản Đốc.\n\n5️⃣ **Tinh thần chia sẻ**\nKhông giấu nghề! Nếu bạn biết, hãy giúp đỡ những người mới. Cộng đồng phát triển thì mỗi cá nhân mới có thể tiến xa.\n\n*Cảm ơn bạn đã trở thành một phần của Tổ Young Phố!* 🖤',
-      rulesColor: '#2b2d31',
-      visaChannelId: '',
-      visaMessageId: '',
-      rolesChannelId: '',
-      rolesMessageId: '',
-      rulesChannelId: '',
-      rulesMessageId: '',
-    };
-    const config = configStr ? { ...defaults, ...JSON.parse(configStr) } : defaults;
-    return json(config);
+    return json(await getBotConfig(env));
   }
 
   // ── POST /api/bot-config ─────────────────────────────────────────
@@ -146,8 +112,7 @@ export async function handleApiRequest(request, env) {
     try {
       const body = await request.json();
       // Lấy config cũ để merge
-      const oldStr = await env.BOT_CONFIG.get('BOT_CONFIG');
-      const old = oldStr ? JSON.parse(oldStr) : {};
+      const old = await getBotConfig(env);
       const merged = { ...old, ...body };
       await env.BOT_CONFIG.put('BOT_CONFIG', JSON.stringify(merged));
 
@@ -178,19 +143,11 @@ export async function handleApiRequest(request, env) {
   if (request.method === 'GET' && url.pathname === '/api/stats') {
     try {
       // Lấy thông tin guild (membercount tổng)
-      const guildRes = await fetch(
-        `${DISCORD_API}/guilds/${GUILD_ID}?with_counts=true`,
-        { headers: { Authorization: `Bot ${env.DISCORD_TOKEN}` } }
-      );
-      const guildData = await guildRes.json();
+      const guildData = await discordRequest(env, `/guilds/${GUILD_ID}?with_counts=true`);
       const totalMembers = guildData.approximate_member_count ?? guildData.member_count ?? 0;
 
       // Lấy danh sách roles từ guild để có member_count của từng role
-      const rolesRes = await fetch(
-        `${DISCORD_API}/guilds/${GUILD_ID}/roles`,
-        { headers: { Authorization: `Bot ${env.DISCORD_TOKEN}` } }
-      );
-      const rolesData = await rolesRes.json();
+      const rolesData = await discordRequest(env, `/guilds/${GUILD_ID}/roles`);
 
       // Map role ID → member_count
       const roleCountMap = {};

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Trash2, Plus, Save, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 
 export default function GifManager({ apiUrl, apiKey }) {
@@ -9,11 +9,7 @@ export default function GifManager({ apiUrl, apiKey }) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewError, setPreviewError] = useState(false);
 
-  useEffect(() => {
-    fetchGifs();
-  }, []);
-
-  const fetchGifs = async () => {
+  const fetchGifs = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`${apiUrl}/api/config`, {
@@ -21,6 +17,7 @@ export default function GifManager({ apiUrl, apiKey }) {
           'X-Dashboard-Key': apiKey
         }
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setGifs(data.gifs || []);
     } catch (e) {
@@ -29,12 +26,16 @@ export default function GifManager({ apiUrl, apiKey }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiKey, apiUrl]);
+
+  useEffect(() => {
+    fetchGifs();
+  }, [fetchGifs]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`${apiUrl}/api/config`, {
+      const res = await fetch(`${apiUrl}/api/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,6 +43,7 @@ export default function GifManager({ apiUrl, apiKey }) {
         },
         body: JSON.stringify({ gifs }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert('✅ Đã lưu cấu hình thành công!');
     } catch (e) {
       console.error(e);

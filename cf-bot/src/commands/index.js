@@ -1,4 +1,8 @@
 // Slash command definitions for registration
+import { sendDiscordMessage, updateDiscordMessage } from '../discord.js';
+import { formatWelcomeDescription, parseEmbedColor } from '../defaults.js';
+import { getBotConfig, getWelcomeGifs } from '../storage.js';
+
 export const commands = [
   {
     name: 'ping',
@@ -103,14 +107,7 @@ export async function handleSlashCommand(interaction, env) {
       const panelPayload = await buildRolesPanel(env);
 
       // Send panel to channel via Discord REST API
-      await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(panelPayload),
-      });
+      await sendDiscordMessage(env, channelId, panelPayload);
 
       return {
         type: 4,
@@ -129,14 +126,7 @@ export async function handleSlashCommand(interaction, env) {
       const channelId = channelOption?.value ?? CHANNELS.START;
       const panelPayload = await buildWelcomePanel(env);
 
-      await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(panelPayload),
-      });
+      await sendDiscordMessage(env, channelId, panelPayload);
 
       return {
         type: 4,
@@ -148,44 +138,15 @@ export async function handleSlashCommand(interaction, env) {
     }
 
     case 'test-welcome': {
-      const { CHANNELS, WELCOME_GIFS } = await import('../config.js');
       const userId = interaction.member.user.id;
-      
-      let gifs = [];
-      let config = {};
-      try {
-        const gifsStr = await env.BOT_CONFIG.get('WELCOME_GIFS');
-        if (gifsStr) gifs = JSON.parse(gifsStr);
-      } catch (e) {}
-      
-      try {
-        const configStr = await env.BOT_CONFIG.get('BOT_CONFIG');
-        if (configStr) config = JSON.parse(configStr);
-      } catch (e) {}
-
-      if (gifs.length === 0) gifs = WELCOME_GIFS;
-
+      const gifs = await getWelcomeGifs(env);
       const randomGif = gifs[Math.floor(Math.random() * gifs.length)];
-      
-      const defaults = {
-        welcomeTitle: '🎉 Chào mừng đến với Tổ Young Phố!',
-        welcomeDescription: `Chào mừng <@{userId}> đến với nơi những đứa trẻ phố phường chia sẻ và phát triển kỹ năng **3D Game Art & Design**.\n\n**Để bắt đầu:**\n• Đọc <#${CHANNELS.RULES}> để hiểu quy tắc\n• Đến <#${CHANNELS.ROLES}> để chọn vai trò\n\nChúc bạn có những trải nghiệm vui vẻ và học hỏi được nhiều thứ tại đây! 🔥\nBạn là thành viên thứ **{memberCount}** của Tổ Young Phố!`,
-        welcomeColor: '#00B0F4',
-      };
-      const finalConfig = { ...defaults, ...config };
-
-      let colorInt = 0x00B0F4;
-      try {
-        if (finalConfig.welcomeColor) {
-           colorInt = parseInt(finalConfig.welcomeColor.replace('#', ''), 16);
-        }
-      } catch(e){}
-
-      let desc = finalConfig.welcomeDescription
-        .replace(/{userId}/g, userId)
-        .replace(/{memberCount}/g, '999') // Test count
-        .replace(/{rulesChannel}/g, CHANNELS.RULES)
-        .replace(/{rolesChannel}/g, CHANNELS.ROLES);
+      const finalConfig = await getBotConfig(env);
+      const colorInt = parseEmbedColor(finalConfig.welcomeColor, 0x00B0F4);
+      const desc = formatWelcomeDescription(finalConfig.welcomeDescription, {
+        userId,
+        memberCount: '999',
+      });
 
       return {
         type: 4,
@@ -211,14 +172,7 @@ export async function handleSlashCommand(interaction, env) {
       const channelId = channelOption?.value ?? CHANNELS.RULES;
       const panelPayload = await buildRulesPanel(env);
 
-      await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(panelPayload),
-      });
+      await sendDiscordMessage(env, channelId, panelPayload);
 
       return {
         type: 4,
@@ -250,16 +204,10 @@ export async function handleSlashCommand(interaction, env) {
         payload = await buildRolesPanel(env);
       }
 
-      const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
+      try {
+        await updateDiscordMessage(env, channelId, messageId, payload);
+      } catch (error) {
+        console.error('Failed to edit panel:', error);
         return {
           type: 4,
           data: {

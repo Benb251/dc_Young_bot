@@ -1,4 +1,7 @@
-import { ROLES, CHANNELS, EMOJI, BUTTON_IDS, DISCORD_API, GUILD_ID } from '../config.js';
+import { ROLES, EMOJI, BUTTON_IDS, GUILD_ID } from '../config.js';
+import { DEFAULT_ROLE_PANEL_THUMBNAIL } from '../defaults.js';
+import { discordRequest } from '../discord.js';
+import { getBotConfig } from '../storage.js';
 
 // Map button ID → role ID + display name
 const ROLE_MAP = {
@@ -19,16 +22,10 @@ export async function handleButtonRole(interaction, env) {
   const memberRoles = interaction.member.roles;
   const hasRole = memberRoles.includes(role.id);
 
-  const headers = {
-    'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-    'Content-Type': 'application/json',
-  };
-
   if (hasRole) {
     // Remove role
-    await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/members/${userId}/roles/${role.id}`, {
+    await discordRequest(env, `/guilds/${GUILD_ID}/members/${userId}/roles/${role.id}`, {
       method: 'DELETE',
-      headers,
     });
     return {
       type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
@@ -39,9 +36,8 @@ export async function handleButtonRole(interaction, env) {
     };
   } else {
     // Add role
-    await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/members/${userId}/roles/${role.id}`, {
+    await discordRequest(env, `/guilds/${GUILD_ID}/members/${userId}/roles/${role.id}`, {
       method: 'PUT',
-      headers,
     });
     return {
       type: 4,
@@ -55,15 +51,8 @@ export async function handleButtonRole(interaction, env) {
 
 // Build the roles panel message payload (called by /send-roles-panel)
 export async function buildRolesPanel(env) {
-  let thumbnail = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnJvZ2IzcnhzMjdjcHlxODVkMWZxbDdheWs1cjViMzE1OWluamRlaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/j91j9wdUh3rm8/giphy.gif';
-  
-  try {
-    const configStr = await env.BOT_CONFIG.get('BOT_CONFIG');
-    if (configStr) {
-      const cfg = JSON.parse(configStr);
-      if (cfg.rolePanelThumbnail) thumbnail = cfg.rolePanelThumbnail;
-    }
-  } catch (e) {}
+  const config = await getBotConfig(env);
+  const thumbnail = config.rolePanelThumbnail || DEFAULT_ROLE_PANEL_THUMBNAIL;
 
   return {
     embeds: [{

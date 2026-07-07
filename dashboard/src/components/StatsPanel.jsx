@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BarChart2, RefreshCw, Users } from 'lucide-react';
 
 const ROLE_DEFINITIONS = [
@@ -17,11 +17,7 @@ export default function StatsPanel({ apiUrl, apiKey }) {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -40,7 +36,11 @@ export default function StatsPanel({ apiUrl, apiKey }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiKey, apiUrl]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const maxCount = stats
     ? Math.max(...Object.values(stats.roles), 1)

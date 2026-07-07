@@ -46,8 +46,13 @@ export default {
 
     // ── 2. Slash Commands ────────────────────────────────────
     if (interaction.type === InteractionType.APPLICATION_COMMAND) {
-      const result = await handleSlashCommand(interaction, env);
-      return jsonResponse(result);
+      try {
+        const result = await handleSlashCommand(interaction, env);
+        return jsonResponse(result);
+      } catch (error) {
+        console.error('Slash command failed:', error);
+        return jsonResponse(errorInteraction('Có lỗi khi xử lý lệnh. Vui lòng kiểm tra quyền bot và thử lại.'));
+      }
     }
 
     // ── 3. Button Interactions ───────────────────────────────
@@ -56,14 +61,22 @@ export default {
 
       // Welcome / Visa button
       if (buttonId === BUTTON_IDS.VISA_BTN) {
-        const result = await handleVisa(interaction, env, ctx);
-        return jsonResponse(result);
+        try {
+          const result = await handleVisa(interaction, env, ctx);
+          return jsonResponse(result);
+        } catch (error) {
+          console.error('Visa button failed:', error);
+          return jsonResponse(errorInteraction('Không thể cấp Visa lúc này. Vui lòng thử lại sau.'));
+        }
       }
 
       // Role buttons (blender, maya, zbrush, substance, 2d, beginner)
       const roleButtonIds = Object.values(BUTTON_IDS).filter(id => id !== BUTTON_IDS.VISA_BTN);
       if (roleButtonIds.includes(buttonId)) {
-        const result = await handleButtonRole(interaction, env);
+        const result = await handleButtonRole(interaction, env).catch(error => {
+          console.error('Role button failed:', error);
+          return errorInteraction('Không thể cập nhật role lúc này. Vui lòng kiểm tra quyền bot.');
+        });
         if (result) return jsonResponse(result);
       }
     }
@@ -76,4 +89,14 @@ function jsonResponse(data) {
   return new Response(JSON.stringify(data), {
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function errorInteraction(content) {
+  return {
+    type: 4,
+    data: {
+      content: `❌ ${content}`,
+      flags: 64,
+    },
+  };
 }

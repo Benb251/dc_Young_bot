@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Settings, MessageSquare, Shield, Layers, Save, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { MessageSquare, Shield, Layers, Save, RotateCcw } from 'lucide-react';
 
 const ROLES_INFO = [
   { key: 'blender',   label: 'Blender',       emoji: '🟠', color: '#EA7600' },
@@ -36,12 +36,7 @@ export default function BotSettings({ apiUrl, apiKey }) {
 
   const [channels, setChannels] = useState([]);
 
-  useEffect(() => {
-    fetchConfig();
-    fetchChannels();
-  }, []);
-
-  const fetchChannels = async () => {
+  const fetchChannels = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/channels`, {
         headers: {
@@ -55,7 +50,7 @@ export default function BotSettings({ apiUrl, apiKey }) {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [apiKey, apiUrl]);
 
   const renderChannelOptions = () => {
     if (!channels || channels.length === 0) return null;
@@ -88,7 +83,7 @@ export default function BotSettings({ apiUrl, apiKey }) {
     );
   };
 
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`${apiUrl}/api/bot-config`, {
@@ -105,7 +100,12 @@ export default function BotSettings({ apiUrl, apiKey }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiKey, apiUrl]);
+
+  useEffect(() => {
+    fetchConfig();
+    fetchChannels();
+  }, [fetchChannels, fetchConfig]);
 
   const handleChange = (key, value) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -150,7 +150,7 @@ export default function BotSettings({ apiUrl, apiKey }) {
       } else {
         alert('❌ Lỗi khi lưu!');
       }
-    } catch (e) {
+    } catch {
       alert('❌ Lỗi khi lưu!');
     } finally {
       setSaving(null);

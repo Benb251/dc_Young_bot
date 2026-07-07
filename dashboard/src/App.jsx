@@ -5,7 +5,7 @@ import GifManager from './components/GifManager';
 import BotSettings from './components/BotSettings';
 import StatsPanel from './components/StatsPanel';
 
-const API_URL = 'https://quan-hem-bot.hungyd-112.workers.dev';
+const API_URL = import.meta.env.VITE_API_URL || 'https://quan-hem-bot.hungyd-112.workers.dev';
 
 function App() {
   const [apiKey, setApiKey] = useState('');

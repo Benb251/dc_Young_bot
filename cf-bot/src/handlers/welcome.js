@@ -1,23 +1,7 @@
-import { BUTTON_IDS, CHANNELS, ROLES, GUILD_ID, DISCORD_API, WELCOME_GIFS } from '../config.js';
-
-async function getBotConfig(env) {
-  let config = {};
-  try {
-    const configStr = await env.BOT_CONFIG.get('BOT_CONFIG');
-    if (configStr) config = JSON.parse(configStr);
-  } catch (e) {}
-
-  const defaults = {
-    welcomeTitle: '🎉 Chào mừng đến với Tổ Young Phố!',
-    welcomeDescription: `Chào mừng <@{userId}> đến với nơi những đứa trẻ phố phường chia sẻ và phát triển kỹ năng **3D Game Art & Design**.\n\n**Để bắt đầu:**\n• Đọc <#{rulesChannel}> để hiểu quy tắc\n• Đến <#{rolesChannel}> để chọn vai trò\n\nChúc bạn có những trải nghiệm vui vẻ và học hỏi được nhiều thứ tại đây! 🔥\nBạn là thành viên thứ **{memberCount}** của Tổ Young Phố!`,
-    welcomeColor: '#00B0F4',
-    visaTitle: '🏡 Chào mừng đến với Tổ Young Phố!',
-    visaDescription: `Bạn đang đứng trước cổng **Tổ Young Phố** — cộng đồng chia sẻ, học hỏi và cháy hết mình với đam mê 3D, Game & 2D Design!\n\n**Trước khi vào Phố, hãy nhận Visa của bạn** ⬇️`,
-    visaButtonLabel: 'Nhận Visa vào Phố 🏡',
-  };
-
-  return { ...defaults, ...config };
-}
+import { BUTTON_IDS, CHANNELS, ROLES, GUILD_ID } from '../config.js';
+import { formatWelcomeDescription, parseEmbedColor } from '../defaults.js';
+import { discordRequest, sendDiscordMessage } from '../discord.js';
+import { getBotConfig, getWelcomeGifs } from '../storage.js';
 
 // Build the visa/welcome panel message (posted to #bắt-đầu)
 export async function buildWelcomePanel(env) {
@@ -56,14 +40,7 @@ export async function handleVisa(interaction, env, ctx) {
   const userId = interaction.member.user.id;
   
   // Pick a random GIF from KV or fallback to config
-  let gifs = [];
-  try {
-    const gifsStr = await env.BOT_CONFIG.get('WELCOME_GIFS');
-    if (gifsStr) gifs = JSON.parse(gifsStr);
-  } catch (e) {
-    console.error('Error reading KV', e);
-  }
-  if (gifs.length === 0) gifs = WELCOME_GIFS;
+  const gifs = await getWelcomeGifs(env);
 
   const randomGif = gifs[Math.floor(Math.random() * gifs.length)];
   const config = await getBotConfig(env);
@@ -72,52 +49,28 @@ export async function handleVisa(interaction, env, ctx) {
   ctx.waitUntil((async () => {
     try {
       // 1. Lấy thông tin Server để đếm tổng số Member (membercount)
-      const guildRes = await fetch(`${DISCORD_API}/guilds/${GUILD_ID}?with_counts=true`, {
-        headers: { 'Authorization': `Bot ${env.DISCORD_TOKEN}` }
-      });
-      const guildData = await guildRes.json();
+      const guildData = await discordRequest(env, `/guilds/${GUILD_ID}?with_counts=true`);
       const memberCount = guildData.approximate_member_count || guildData.member_count || '?';
 
       // 2. Assign the Visa role
-      await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/members/${userId}/roles/${ROLES.VISA}`, {
+      await discordRequest(env, `/guilds/${GUILD_ID}/members/${userId}/roles/${ROLES.VISA}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
       });
 
       // 3. Prepare message color and text
-      let colorInt = 0x00B0F4;
-      try {
-        if (config.welcomeColor) {
-           colorInt = parseInt(config.welcomeColor.replace('#', ''), 16);
-        }
-      } catch(e){}
+      const colorInt = parseEmbedColor(config.welcomeColor, 0x00B0F4);
+      const desc = formatWelcomeDescription(config.welcomeDescription, { userId, memberCount });
 
-      let desc = config.welcomeDescription
-        .replace(/{userId}/g, userId)
-        .replace(/{memberCount}/g, memberCount)
-        .replace(/{rulesChannel}/g, CHANNELS.RULES)
-        .replace(/{rolesChannel}/g, CHANNELS.ROLES);
-
-      // 4. Send public welcome message to #chào-mừng
-      await fetch(`${DISCORD_API}/channels/${CHANNELS.WELCOME}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bot ${env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          embeds: [{
-            color: colorInt,
-            title: config.welcomeTitle,
-            description: desc,
-            image: {
-              url: randomGif
-            }
-          }]
-        })
+      // 4. Send public welcome message to #chao-mung
+      await sendDiscordMessage(env, CHANNELS.WELCOME, {
+        embeds: [{
+          color: colorInt,
+          title: config.welcomeTitle,
+          description: desc,
+          image: {
+            url: randomGif
+          }
+        }]
       });
     } catch (e) {
       console.error(e);
