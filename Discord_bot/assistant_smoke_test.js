@@ -9,6 +9,7 @@ const { extractJson } = require('./assistant_brain.js');
 const memory = require('./assistant_memory.js');
 const confirmations = require('./assistant_confirmations.js');
 const { isDangerousAction } = require('./assistant_tools.js');
+const autoMemory = require('./assistant_auto_memory.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -49,6 +50,31 @@ async function main() {
   }
   if (confirmations.getPendingConfirmation(context)) {
     throw new Error('confirmation cleanup failed');
+  }
+
+  const candidates = autoMemory.parseMemoryCandidates(JSON.stringify({
+    memories: [
+      {
+        scope: 'user',
+        title: 'Preferred software',
+        content: 'User prefers Blender for topology feedback.',
+        tags: ['blender'],
+        confidence: 0.9,
+      },
+      {
+        scope: 'user',
+        title: 'Temporary maybe',
+        content: 'Maybe the user is hungry right now.',
+        tags: ['temporary'],
+        confidence: 0.3,
+      },
+    ],
+  }));
+  if (candidates.length !== 1 || candidates[0].scope !== 'user') {
+    throw new Error('auto-memory candidate parsing failed');
+  }
+  if (!autoMemory.hasSecretLikeText('AI_API_KEY=sk-test-secret-value')) {
+    throw new Error('auto-memory secret guard failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

@@ -5,6 +5,7 @@ const {
   isAdminMessage,
   isDangerousAction,
 } = require('./assistant_tools.js');
+const { autoRememberFromTurn } = require('./assistant_auto_memory.js');
 const {
   clearPendingConfirmation,
   consumePendingConfirmation,
@@ -138,6 +139,18 @@ function formatActionPreview(actions) {
     .join('\n');
 }
 
+function scheduleAutoMemory({ context, userText, assistantText, existingFacts }) {
+  autoRememberFromTurn({ context, userText, assistantText, existingFacts })
+    .then(savedFacts => {
+      if (savedFacts.length) {
+        console.log(`[ASSISTANT MEMORY] Auto-saved ${savedFacts.length} fact(s).`);
+      }
+    })
+    .catch(error => {
+      console.error('[ASSISTANT MEMORY] Auto-memory failed:', error);
+    });
+}
+
 async function handleAssistantMessage(message, cleanContent) {
   const context = {
     guildId: message.guild?.id || null,
@@ -242,6 +255,12 @@ async function handleAssistantMessage(message, cleanContent) {
       content: finalResponse,
     });
     await splitAndReply(message, finalResponse);
+    scheduleAutoMemory({
+      context,
+      userText: cleanContent,
+      assistantText: finalResponse,
+      existingFacts: facts,
+    });
     return;
   }
 
@@ -267,6 +286,12 @@ async function handleAssistantMessage(message, cleanContent) {
     content: finalResponse,
   });
   await splitAndReply(message, finalResponse);
+  scheduleAutoMemory({
+    context,
+    userText: cleanContent,
+    assistantText: finalResponse,
+    existingFacts: facts,
+  });
 }
 
 module.exports = {

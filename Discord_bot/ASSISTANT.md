@@ -22,6 +22,8 @@ Assistant memory:
 - `ASSISTANT_MEMORY_FILE`, default `Discord_bot/data/assistant_memory.json`
 - `ASSISTANT_MAX_FACTS`, default `500`
 - `ASSISTANT_CONVERSATION_TURNS`, default `16`
+- `ASSISTANT_AUTO_MEMORY`, default `true`; set `false` to disable model-assisted memory extraction
+- `ASSISTANT_AUTO_MEMORY_LIMIT`, default `3`
 
 Assistant safety:
 
@@ -37,6 +39,7 @@ Assistant safety:
 - Admins can mention the bot in-server and ask it to perform supported admin actions.
 - The assistant asks the model for a JSON decision, executes allowed low-risk tools, then reports the result.
 - Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
+- After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
 
 ## Supported Tools
