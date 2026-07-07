@@ -6,7 +6,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.DirectMessages
   ],
   partials: [
     Partials.Message,
@@ -276,7 +277,51 @@ async function markThreadAsSolved(thread, triggerUser) {
 // ── 2. Event: Message Created (Detect triggers like "đã giải quyết" or "/done", or tag bot for AI) ──
 client.on('messageCreate', async (message) => {
   try {
-    if (message.author.bot) return;
+    // I. Xử lý tin nhắn riêng (DM) từ Admin
+    const isDM = !message.guild;
+    if (isDM) {
+      const contentTrim = message.content.trim();
+      if (contentTrim.toLowerCase().startsWith('ra lệnh:') || contentTrim.toLowerCase().startsWith('ralenh:')) {
+        const adminId = process.env.ADMIN_DISCORD_ID;
+        if (message.author.id !== adminId) {
+          await message.reply('⚠️ Cảnh báo: Bạn không có quyền hạn cấp cao để sử dụng lệnh Admin!');
+          return;
+        }
+
+        const instruction = contentTrim.replace(/^(ra lệnh:|ralenh:)\s*/i, '').trim();
+        console.log(`👑 [ADMIN DM COMMAND] Processing instruction from owner: "${instruction}"`);
+
+        await message.channel.sendTyping();
+        const cmdResult = await parseAdminCommand(instruction);
+        console.log(`👑 [ADMIN DM COMMAND] AI parsed result:`, cmdResult);
+
+        if (cmdResult.action === 'send_message') {
+          const targetChannelName = cmdResult.channel_name.replace('#', '').trim();
+          try {
+            // Lấy server (Guild) Tổ Young Phố
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const targetChannel = guild.channels.cache.find(c => c.name === targetChannelName);
+            
+            if (targetChannel) {
+              await targetChannel.send(cmdResult.content);
+              await message.reply(`✅ Đã thực hiện: Gửi tin nhắn vào kênh #${targetChannelName} thành công!`);
+            } else {
+              await message.reply(`❌ Không tìm thấy kênh nào có tên là: \`#${targetChannelName}\` trên server.`);
+            }
+          } catch (guildErr) {
+            console.error(guildErr);
+            await message.reply('❌ Không thể kết nối tới server Tổ Young Phố để thực hiện lệnh.');
+          }
+        } 
+        else if (cmdResult.action === 'delete_messages') {
+          await message.reply('❌ Lệnh xóa tin nhắn không khả dụng khi nhắn tin riêng (DM). Hãy sử dụng trực tiếp trong kênh của server.');
+        } 
+        else {
+          await message.reply(`❓ Bot không hiểu hoặc chưa hỗ trợ lệnh này. Chi tiết: ${cmdResult.message || 'Lệnh không xác định'}`);
+        }
+        return;
+      }
+    }
 
     const channel = message.channel;
 
