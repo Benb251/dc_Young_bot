@@ -46,12 +46,18 @@ async function getAIChatResponse(messages, imageUrls = []) {
     ...messages
   ];
 
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (process.env.AI_API_KEY) {
+    headers['Authorization'] = `Bearer ${process.env.AI_API_KEY}`;
+  }
+
   try {
     const response = await fetch(`${endpoint}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: headers,
       body: JSON.stringify({
         model: model,
         messages: apiMessages,
