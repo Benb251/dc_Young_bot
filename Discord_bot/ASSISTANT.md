@@ -50,6 +50,12 @@ Assistant onboarding:
 - `ASSISTANT_HELP_CHANNEL_ID`, optional help/Q&A channel linked in the welcome embed.
 - `ASSISTANT_WELCOME_TITLE`, `ASSISTANT_WELCOME_MESSAGE`, and `ASSISTANT_WELCOME_DM_MESSAGE` support `{user}`, `{username}`, `{server}`, and `{memberCount}`.
 
+Assistant web fetch:
+
+- `ASSISTANT_WEB_TIMEOUT_MS`, default `15000`, max `60000`.
+- `ASSISTANT_WEB_MAX_BYTES`, default `512000`, max `2000000`.
+- Public `http/https` pages only. Localhost and private network IPs are blocked.
+
 Assistant moderation:
 
 - `ASSISTANT_WARNING_FILE`, default `Discord_bot/data/assistant_warnings.json`
@@ -91,6 +97,7 @@ Assistant safety:
 - `analyze_server`: analyze the current server structure and suggest the next operations phase, with an offline fallback if AI routing fails.
 - `learn_server`: generate and upsert a persistent guild memory profile for the current server.
 - `inspect_member`: inspect one member's roles, notable permissions, join/account age, timeout state, and active warnings.
+- `fetch_url` / `summarize_url`: fetch a public web page and summarize or reshape it for Discord/resource-hub use.
 - `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
 - `schedule_reminder`: schedule a future reminder in the current channel or DM.
 - `list_reminders`: list pending reminders for the current admin/user.

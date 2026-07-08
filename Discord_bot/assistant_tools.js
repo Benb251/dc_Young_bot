@@ -12,6 +12,7 @@ const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_s
 const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 const { analyzeServer, generateServerProfile } = require('./assistant_server_advisor.js');
+const { summarizeUrl } = require('./assistant_web.js');
 
 const ADMIN_ACTIONS = new Set([
   'analyze_server',
@@ -639,6 +640,8 @@ async function executeAssistantActions({ message, actions = [], context }) {
           : 'Không tạo được hồ sơ server hợp lệ để lưu.');
       } else if (type === 'search_messages') {
         results.push(await searchMessages(message, args));
+      } else if (type === 'fetch_url' || type === 'summarize_url') {
+        results.push(await summarizeUrl(args));
       } else if (type === 'schedule_reminder') {
         const reminder = await createReminder({ args, context, message });
         results.push(reminder

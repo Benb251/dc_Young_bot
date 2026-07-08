@@ -23,6 +23,7 @@ const tasks = require('./assistant_tasks.js');
 const warnings = require('./assistant_warnings.js');
 const advisor = require('./assistant_server_advisor.js');
 const onboarding = require('./assistant_onboarding.js');
+const web = require('./assistant_web.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -93,6 +94,7 @@ async function main() {
     || isDangerousAction({ type: 'search_messages' })
     || isDangerousAction({ type: 'schedule_reminder' })
     || isDangerousAction({ type: 'learn_server' })
+    || isDangerousAction({ type: 'fetch_url' })
   ) {
     throw new Error('dangerous action classification failed');
   }
@@ -257,6 +259,23 @@ async function main() {
   };
   if (!welcomeConfig.enabled || !onboarding.fillTemplate(welcomeConfig.message, fakeMember).includes('<@member>')) {
     throw new Error('onboarding config/template failed');
+  }
+
+  if (!web.isPrivateIp('127.0.0.1') || !web.isPrivateIp('192.168.1.2') || web.isPrivateIp('8.8.8.8')) {
+    throw new Error('web private IP guard failed');
+  }
+  let blockedLocalhost = false;
+  try {
+    web.parsePublicUrl('http://localhost:3000');
+  } catch {
+    blockedLocalhost = true;
+  }
+  if (!blockedLocalhost) {
+    throw new Error('web localhost guard failed');
+  }
+  const readable = web.extractReadableText('<html><head><title>X</title><style>.x{}</style></head><body><h1>Hello</h1><script>x()</script><p>World &amp; team</p></body></html>');
+  if (!readable.includes('Hello') || !readable.includes('World & team') || readable.includes('x()')) {
+    throw new Error('web readable text extraction failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

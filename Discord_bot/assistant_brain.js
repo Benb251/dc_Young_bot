@@ -42,6 +42,7 @@ Tool actions có thể dùng:
 - { "type": "analyze_server", "question": "mục tiêu hoặc câu hỏi của admin", "limit": 50, "roleLimit": 35 }
 - { "type": "learn_server", "notes": "ghi chú thêm của admin nếu có", "limit": 50, "roleLimit": 35 }
 - { "type": "inspect_member", "member": "id/mention/tên member", "warningLimit": 5 }
+- { "type": "fetch_url", "url": "https://...", "question": "tóm tắt/draft lại/resource hub/điểm chính" }
 - { "type": "search_messages", "query": "từ khóa", "channel": "tên hoặc id kênh tùy chọn", "count": 50, "limit": 8, "all": false }
 - { "type": "schedule_reminder", "content": "nội dung cần nhắc", "when": "20 phút|2h|2026-07-09T10:00:00+07:00" }
 - { "type": "list_reminders", "limit": 10 }
@@ -87,6 +88,7 @@ Quy tắc hành động:
 - Nếu admin hỏi "bây giờ nên làm gì", "giai đoạn tiếp theo", "phân tích server", "lập roadmap", hoặc muốn bot tư vấn vận hành cộng đồng dựa trên server hiện tại, dùng analyze_server.
 - Nếu admin bảo "học server này", "ghi nhớ cấu trúc server", "lưu hồ sơ cộng đồng", hoặc muốn bot nhớ bối cảnh server cho lần sau, dùng learn_server.
 - Nếu admin hỏi về một member cụ thể, muốn check role/quyền/ngày tham gia/warning, hoặc reply vào tin nhắn và nói "check bạn này", dùng inspect_member.
+- Nếu người dùng đưa URL web public và muốn đọc/tóm tắt/draft lại/biến thành resource hub, dùng fetch_url.
 - Nếu admin hỏi "ai đã nói gì", "tìm lại", "lục chat", hoặc cần bằng chứng từ tin nhắn gần đây, dùng search_messages.
 - Nếu admin muốn nhắc việc/hẹn giờ/follow-up sau, dùng schedule_reminder. Nếu thiếu nội dung hoặc thời gian, hỏi lại.
 - Nếu admin muốn xem hoặc hủy nhắc việc, dùng list_reminders hoặc cancel_reminder.
