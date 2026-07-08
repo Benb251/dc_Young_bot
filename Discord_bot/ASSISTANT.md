@@ -56,6 +56,7 @@ Assistant web fetch:
 - `ASSISTANT_WEB_MAX_BYTES`, default `512000`, max `2000000`.
 - `ASSISTANT_WEB_IMAGE_LIMIT`, default `8`.
 - Public `http/https` pages only. Localhost and private network IPs are blocked.
+- HTML extraction prefers main/article content and strips common sidebar/navigation/table-of-contents blocks.
 
 Assistant moderation:
 

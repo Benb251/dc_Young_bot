@@ -80,8 +80,58 @@ function decodeHtmlEntities(text) {
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
 }
 
+function findElementBlock(html, openTagStart) {
+  const source = String(html || '');
+  const openEnd = source.indexOf('>', openTagStart);
+  if (openEnd < 0) return '';
+  const tagMatch = source.slice(openTagStart, openEnd + 1).match(/^<([a-z0-9-]+)/i);
+  if (!tagMatch) return '';
+  const tagName = tagMatch[1].toLowerCase();
+  const tagRegex = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi');
+  tagRegex.lastIndex = openTagStart;
+
+  let depth = 0;
+  let match;
+  while ((match = tagRegex.exec(source))) {
+    if (match[0].startsWith(`</`)) {
+      depth -= 1;
+      if (depth === 0) return source.slice(openTagStart, tagRegex.lastIndex);
+    } else if (!match[0].endsWith('/>')) {
+      depth += 1;
+    }
+  }
+  return source.slice(openTagStart);
+}
+
+function stripNonContentHtml(html) {
+  return String(html || '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<div[^>]+class=["'][^"']*(sidebar|toctree|toc|search|breadcrumb|pagination|article-info|on-this-page)[^"']*["'][\s\S]*?<\/div>/gi, ' ');
+}
+
+function extractMainHtml(html) {
+  const source = String(html || '');
+  const selectors = [
+    /<article\b[^>]*role=["']main["'][^>]*>/i,
+    /<main\b[^>]*>/i,
+    /<div\b[^>]*role=["']main["'][^>]*>/i,
+    /<div\b[^>]*class=["'][^"']*(article-container|document|body|content)[^"']*["'][^>]*>/i,
+  ];
+
+  for (const selector of selectors) {
+    const match = selector.exec(source);
+    if (!match) continue;
+    const block = findElementBlock(source, match.index);
+    if (block) return stripNonContentHtml(block);
+  }
+  return stripNonContentHtml(source);
+}
+
 function extractReadableText(html) {
-  const withoutNoise = String(html || '')
+  const withoutNoise = stripNonContentHtml(String(html || ''))
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
@@ -164,13 +214,14 @@ async function fetchUrlContent(rawUrl, env = process.env) {
     }
 
     const raw = await response.text();
-    const text = /html/i.test(contentType) ? extractReadableText(raw) : raw.trim();
     const finalUrl = response.url || parsedUrl.toString();
+    const mainHtml = /html/i.test(contentType) ? extractMainHtml(raw) : raw;
+    const text = /html/i.test(contentType) ? extractReadableText(mainHtml) : raw.trim();
     return {
       url: finalUrl,
       title: /html/i.test(contentType) ? extractTitle(raw, finalUrl) : parsedUrl.toString(),
       contentType,
-      imageUrls: /html/i.test(contentType) ? extractImageUrls(raw, finalUrl, Number(env.ASSISTANT_WEB_IMAGE_LIMIT || 8)) : [],
+      imageUrls: /html/i.test(contentType) ? extractImageUrls(mainHtml, finalUrl, Number(env.ASSISTANT_WEB_IMAGE_LIMIT || 8)) : [],
       text: text.slice(0, maxBytes),
     };
   } finally {
@@ -299,6 +350,7 @@ module.exports = {
   chunkDiscordText,
   decodeHtmlEntities,
   extractImageUrls,
+  extractMainHtml,
   extractReadableText,
   fetchUrlContent,
   getWebMaxBytes,

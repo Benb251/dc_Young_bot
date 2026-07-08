@@ -314,6 +314,16 @@ async function main() {
   if (imageUrls[0] !== 'https://docs.example.com/images/intro.png' || imageUrls[1] !== 'https://cdn.example.com/a.jpg') {
     throw new Error('web image extraction failed');
   }
+  const mainHtml = web.extractMainHtml([
+    '<html><body>',
+    '<aside class="sidebar"><h2>Muc luc chinh</h2><a>Topbar</a><a>Workspaces</a></aside>',
+    '<article role="main"><h1>Window System Introduction</h1><p>Main lesson text.</p><img src="/main.png"></article>',
+    '</body></html>',
+  ].join(''));
+  const mainText = web.extractReadableText(mainHtml);
+  if (!mainText.includes('Window System Introduction') || !mainText.includes('Main lesson text') || mainText.includes('Muc luc chinh')) {
+    throw new Error('web main content extraction failed');
+  }
 
   await fs.rm(tempMemoryPath, { force: true });
   await fs.rm(tempReminderPath, { force: true });
