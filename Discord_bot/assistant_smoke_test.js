@@ -82,6 +82,7 @@ async function main() {
     || !isDangerousAction({ type: 'warn_member' })
     || !isDangerousAction({ type: 'clear_warning' })
     || !isDangerousAction({ type: 'send_embed' })
+    || !isDangerousAction({ type: 'publish_url_to_forum' })
     || !isDangerousAction({ type: 'lock_channel' })
     || !isDangerousAction({ type: 'pin_message' })
     || !isDangerousAction({ type: 'rename_thread' })
@@ -276,6 +277,10 @@ async function main() {
   const readable = web.extractReadableText('<html><head><title>X</title><style>.x{}</style></head><body><h1>Hello</h1><script>x()</script><p>World &amp; team</p></body></html>');
   if (!readable.includes('Hello') || !readable.includes('World & team') || readable.includes('x()')) {
     throw new Error('web readable text extraction failed');
+  }
+  const imageUrls = web.extractImageUrls('<img src="/images/intro.png"><img src="https://cdn.example.com/a.jpg">', 'https://docs.example.com/manual/page.html');
+  if (imageUrls[0] !== 'https://docs.example.com/images/intro.png' || imageUrls[1] !== 'https://cdn.example.com/a.jpg') {
+    throw new Error('web image extraction failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

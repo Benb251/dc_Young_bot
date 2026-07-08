@@ -12,7 +12,7 @@ const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_s
 const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 const { analyzeServer, generateServerProfile } = require('./assistant_server_advisor.js');
-const { summarizeUrl } = require('./assistant_web.js');
+const { buildForumResourcePost, chunkDiscordText, summarizeUrl } = require('./assistant_web.js');
 
 const ADMIN_ACTIONS = new Set([
   'analyze_server',
@@ -36,6 +36,7 @@ const ADMIN_ACTIONS = new Set([
   'lock_channel',
   'archive_thread',
   'pin_message',
+  'publish_url_to_forum',
   'remove_role',
   'rename_channel',
   'rename_thread',
@@ -68,6 +69,7 @@ const DANGEROUS_ACTIONS = new Set([
   'lock_channel',
   'archive_thread',
   'pin_message',
+  'publish_url_to_forum',
   'remove_role',
   'rename_channel',
   'rename_thread',
@@ -642,6 +644,49 @@ async function executeAssistantActions({ message, actions = [], context }) {
         results.push(await searchMessages(message, args));
       } else if (type === 'fetch_url' || type === 'summarize_url') {
         results.push(await summarizeUrl(args));
+      } else if (type === 'publish_url_to_forum') {
+        const channel = await findChannel(guild, args.channel || args.forum || args.channel_name || args.channelId) || message.channel;
+        if (!channel) {
+          results.push('Không tìm thấy kênh forum/thread để đăng resource.');
+          continue;
+        }
+        const post = await buildForumResourcePost(args);
+        if (!post?.content) {
+          results.push('Không tạo được nội dung bài resource từ URL này.');
+          continue;
+        }
+        const chunks = chunkDiscordText(post.content);
+        let thread = null;
+        if (channel.type === ChannelType.GuildForum) {
+          thread = await channel.threads.create({
+            name: post.title,
+            autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
+            appliedTags: resolveForumTagIds(channel, args.tags),
+            message: { content: chunks.shift() || post.sourceUrl },
+            reason: `Assistant URL resource post by ${message.author.tag}`,
+          });
+        } else if (channel.threads?.create) {
+          thread = await channel.threads.create({
+            name: post.title,
+            autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
+            reason: `Assistant URL resource thread by ${message.author.tag}`,
+          });
+          await thread.send(chunks.shift() || post.sourceUrl);
+        } else {
+          results.push('Kênh này không hỗ trợ tạo forum post/thread.');
+          continue;
+        }
+
+        for (const chunk of chunks) {
+          await thread.send(chunk);
+        }
+        if (post.imageUrls.length) {
+          await thread.send([
+            'Hình minh họa từ trang nguồn:',
+            ...post.imageUrls,
+          ].join('\n').slice(0, 1900));
+        }
+        results.push(`Đã đăng resource từ URL thành thread/forum post <#${thread.id}>.`);
       } else if (type === 'schedule_reminder') {
         const reminder = await createReminder({ args, context, message });
         results.push(reminder

@@ -101,6 +101,40 @@ function extractTitle(html, fallbackUrl) {
   return title || fallbackUrl;
 }
 
+function resolveUrl(baseUrl, value) {
+  try {
+    return new URL(decodeHtmlEntities(value), baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractImageUrls(html, baseUrl, limit = 8) {
+  const urls = [];
+  const seen = new Set();
+  const addUrl = value => {
+    const resolved = resolveUrl(baseUrl, value);
+    if (!resolved || seen.has(resolved)) return;
+    if (!/^https?:\/\//i.test(resolved)) return;
+    seen.add(resolved);
+    urls.push(resolved);
+  };
+
+  const imgRegex = /<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = imgRegex.exec(String(html || ''))) && urls.length < limit) {
+    addUrl(match[1]);
+  }
+
+  const sourceRegex = /<source\b[^>]*srcset=["']([^"']+)["'][^>]*>/gi;
+  while ((match = sourceRegex.exec(String(html || ''))) && urls.length < limit) {
+    const first = String(match[1]).split(',')[0]?.trim().split(/\s+/)[0];
+    if (first) addUrl(first);
+  }
+
+  return urls.slice(0, limit);
+}
+
 async function fetchUrlContent(rawUrl, env = process.env) {
   const parsedUrl = parsePublicUrl(rawUrl);
   await assertPublicHost(parsedUrl);
@@ -131,10 +165,12 @@ async function fetchUrlContent(rawUrl, env = process.env) {
 
     const raw = await response.text();
     const text = /html/i.test(contentType) ? extractReadableText(raw) : raw.trim();
+    const finalUrl = response.url || parsedUrl.toString();
     return {
-      url: response.url || parsedUrl.toString(),
-      title: /html/i.test(contentType) ? extractTitle(raw, parsedUrl.toString()) : parsedUrl.toString(),
+      url: finalUrl,
+      title: /html/i.test(contentType) ? extractTitle(raw, finalUrl) : parsedUrl.toString(),
       contentType,
+      imageUrls: /html/i.test(contentType) ? extractImageUrls(raw, finalUrl, Number(env.ASSISTANT_WEB_IMAGE_LIMIT || 8)) : [],
       text: text.slice(0, maxBytes),
     };
   } finally {
@@ -173,8 +209,82 @@ Hãy trả lời bằng tiếng Việt. Nếu người dùng muốn resource hub
   ].join('\n');
 }
 
+function chunkDiscordText(text, max = 1850) {
+  const chunks = [];
+  let remaining = String(text || '').trim();
+  while (remaining.length > max) {
+    const cut = remaining.lastIndexOf('\n', max) > 800 ? remaining.lastIndexOf('\n', max) : max;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+async function buildForumResourcePost(args = {}) {
+  const url = args.url || args.link;
+  if (!url) return null;
+  const page = await fetchUrlContent(url);
+  if (!page.text) return null;
+
+  const prompt = `
+Bạn đang chuyển một trang tài liệu public thành bài resource hub tiếng Việt cho Discord.
+Không copy nguyên văn toàn bộ. Hãy dịch/tái biên tập cô đọng, dễ học, giữ đúng ý chính và ghi nguồn.
+
+URL nguồn: ${page.url}
+Title nguồn: ${page.title}
+Yêu cầu thêm của admin: ${args.question || args.prompt || args.notes || 'Tạo bài hướng dẫn/resource hub tiếng Việt.'}
+
+Nội dung trang đã trích xuất:
+${page.text.slice(0, 20_000)}
+
+Trả về JSON hợp lệ, không markdown code block:
+{
+  "title": "tiêu đề forum tiếng Việt, tối đa 90 ký tự",
+  "content": "bài đăng tiếng Việt dùng Markdown Discord, gồm: nguồn, mục đích, ý chính, hướng dẫn áp dụng, ghi chú bản quyền/nguồn; tối đa 5000 ký tự"
+}
+`.trim();
+
+  const raw = await getAIChatResponse([
+    { role: 'user', content: prompt },
+  ], [], { temperature: 0.2 });
+
+  let parsed = null;
+  try {
+    const clean = String(raw || '').trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+    parsed = JSON.parse(clean);
+  } catch {
+    parsed = null;
+  }
+
+  const title = String(parsed?.title || args.title || page.title || 'Resource tiếng Việt')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 90);
+  const content = String(parsed?.content || raw || '')
+    .trim()
+    .slice(0, 5200);
+  const sourceLine = content.includes(page.url) ? '' : `\n\nNguồn: ${page.url}`;
+  const imageUrls = page.imageUrls.slice(0, Math.min(Math.max(Number(args.imageLimit) || 6, 0), 10));
+
+  return {
+    title,
+    content: `${content}${sourceLine}`.trim(),
+    imageUrls,
+    sourceUrl: page.url,
+    sourceTitle: page.title,
+  };
+}
+
 module.exports = {
+  buildForumResourcePost,
+  chunkDiscordText,
   decodeHtmlEntities,
+  extractImageUrls,
   extractReadableText,
   fetchUrlContent,
   getWebMaxBytes,
