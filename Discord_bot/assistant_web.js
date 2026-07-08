@@ -227,9 +227,23 @@ async function buildForumResourcePost(args = {}) {
   const page = await fetchUrlContent(url);
   if (!page.text) return null;
 
+  const requestText = String(args.question || args.prompt || args.notes || args.mode || '').toLowerCase();
+  const faithfulTranslation = Boolean(args.exact || args.full || args.faithful)
+    || /dịch\s*(chính xác|sát|đầy đủ|nguyên)|dich\s*(chinh xac|sat|day du|nguyen)|giữ\s*(nguyên|cấu trúc|noi dung|nội dung)|giu\s*(nguyen|cau truc|noi dung)/i.test(requestText);
+  const styleInstruction = faithfulTranslation
+    ? [
+      'Bạn đang chuyển một trang tài liệu public thành bài hướng dẫn tiếng Việt cho Discord.',
+      'Hãy dịch bám sát nội dung chính đã trích xuất, giữ thứ tự ý, heading, bullet và thuật ngữ quan trọng.',
+      'Không biến thành bản tóm tắt ngắn. Chỉ lược bỏ điều hướng/sidebar/trùng lặp/rác HTML nếu có.',
+      'Nếu nội dung quá dài cho Discord, chia thành các mục rõ ràng và giữ đầy đủ các ý chính quan trọng.',
+    ].join('\n')
+    : [
+      'Bạn đang chuyển một trang tài liệu public thành bài resource hub tiếng Việt cho Discord.',
+      'Không copy nguyên văn toàn bộ. Hãy dịch/tái biên tập cô đọng, dễ học, giữ đúng ý chính và ghi nguồn.',
+    ].join('\n');
+  const contentLimit = faithfulTranslation ? 11000 : 5200;
   const prompt = `
-Bạn đang chuyển một trang tài liệu public thành bài resource hub tiếng Việt cho Discord.
-Không copy nguyên văn toàn bộ. Hãy dịch/tái biên tập cô đọng, dễ học, giữ đúng ý chính và ghi nguồn.
+${styleInstruction}
 
 URL nguồn: ${page.url}
 Title nguồn: ${page.title}
@@ -241,7 +255,7 @@ ${page.text.slice(0, 20_000)}
 Trả về JSON hợp lệ, không markdown code block:
 {
   "title": "tiêu đề forum tiếng Việt, tối đa 90 ký tự",
-  "content": "bài đăng tiếng Việt dùng Markdown Discord, gồm: nguồn, mục đích, ý chính, hướng dẫn áp dụng, ghi chú bản quyền/nguồn; tối đa 5000 ký tự"
+  "content": "bài đăng tiếng Việt dùng Markdown Discord, có nguồn rõ ràng; tối đa ${contentLimit} ký tự"
 }
 `.trim();
 
@@ -267,7 +281,7 @@ Trả về JSON hợp lệ, không markdown code block:
     .slice(0, 90);
   const content = String(parsed?.content || raw || '')
     .trim()
-    .slice(0, 5200);
+    .slice(0, contentLimit);
   const sourceLine = content.includes(page.url) ? '' : `\n\nNguồn: ${page.url}`;
   const imageUrls = page.imageUrls.slice(0, Math.min(Math.max(Number(args.imageLimit) || 6, 0), 10));
 

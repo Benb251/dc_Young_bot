@@ -99,7 +99,7 @@ Assistant safety:
 - `learn_server`: generate and upsert a persistent guild memory profile for the current server.
 - `inspect_member`: inspect one member's roles, notable permissions, join/account age, timeout state, and active warnings.
 - `fetch_url` / `summarize_url`: fetch a public web page and summarize or reshape it for Discord/resource-hub use.
-- `publish_url_to_forum`: turn a public web page into a Vietnamese Discord resource post/thread with source link and image URLs from the original page. This is a server-changing action and requires confirmation.
+- `publish_url_to_forum`: turn a public web page into a Vietnamese Discord resource post/thread with source link and image URLs from the original page. Supports faithful translation mode when `exact=true` or the admin asks for exact/full translation. This is a server-changing action and requires confirmation.
 - `search_messages`: search recent visible chat messages by keyword in one channel or across visible channels.
 - `schedule_reminder`: schedule a future reminder in the current channel or DM.
 - `list_reminders`: list pending reminders for the current admin/user.

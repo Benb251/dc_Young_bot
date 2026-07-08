@@ -14,7 +14,8 @@ process.env.ASSISTANT_TASK_FILE = tempTaskPath;
 const { extractJson } = require('./assistant_brain.js');
 const memory = require('./assistant_memory.js');
 const confirmations = require('./assistant_confirmations.js');
-const { isDangerousAction } = require('./assistant_tools.js');
+const tools = require('./assistant_tools.js');
+const { isDangerousAction } = tools;
 const autoMemory = require('./assistant_auto_memory.js');
 const reminders = require('./assistant_reminders.js');
 const aiHelper = require('./ai_helper.js');
@@ -98,6 +99,25 @@ async function main() {
     || isDangerousAction({ type: 'fetch_url' })
   ) {
     throw new Error('dangerous action classification failed');
+  }
+
+  const fakeChannel = { id: '1522895554735112332', name: '💎・▌tài・nguyên' };
+  const fakeGuild = {
+    channels: {
+      fetch: async id => (id === fakeChannel.id ? fakeChannel : null),
+      cache: {
+        find: predicate => (predicate(fakeChannel) ? fakeChannel : null),
+      },
+    },
+  };
+  if (tools.normalizeChannelName(fakeChannel.name) !== 'tai-nguyen') {
+    throw new Error('channel name normalization failed');
+  }
+  if (await tools.findChannel(fakeGuild, 'tai-nguyen') !== fakeChannel) {
+    throw new Error('channel lookup by plain ascii name failed');
+  }
+  if (await tools.findChannel(fakeGuild, 'forum tai-nguyen id 1522895554735112332') !== fakeChannel) {
+    throw new Error('channel lookup by embedded id failed');
   }
 
   const pending = confirmations.createPendingConfirmation(context, {

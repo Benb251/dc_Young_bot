@@ -135,6 +135,11 @@ function normalizeChannelName(name) {
   return String(name || '')
     .replace(/[<#>]/g, '')
     .replace(/^#/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
     .trim()
     .toLowerCase();
 }
@@ -153,7 +158,8 @@ function normalizeChannelSlug(name) {
 async function findChannel(guild, channelNameOrId) {
   if (!guild || !channelNameOrId) return null;
   const raw = String(channelNameOrId).replace(/[<#>]/g, '').trim();
-  const byId = await guild.channels.fetch(raw).catch(() => null);
+  const idMatch = raw.match(/\d{15,25}/);
+  const byId = await guild.channels.fetch(idMatch ? idMatch[0] : raw).catch(() => null);
   if (byId) return byId;
 
   const wanted = normalizeChannelName(raw);
@@ -645,9 +651,12 @@ async function executeAssistantActions({ message, actions = [], context }) {
       } else if (type === 'fetch_url' || type === 'summarize_url') {
         results.push(await summarizeUrl(args));
       } else if (type === 'publish_url_to_forum') {
-        const channel = await findChannel(guild, args.channel || args.forum || args.channel_name || args.channelId) || message.channel;
+        const requestedChannel = args.channel || args.forum || args.channel_name || args.channelId;
+        const channel = requestedChannel
+          ? await findChannel(guild, requestedChannel)
+          : message.channel;
         if (!channel) {
-          results.push('Không tìm thấy kênh forum/thread để đăng resource.');
+          results.push('Không tìm thấy đúng kênh forum/thread để đăng resource. Hãy đưa channel mention hoặc ID kênh.');
           continue;
         }
         const post = await buildForumResourcePost(args);
@@ -1042,7 +1051,9 @@ async function executeAssistantActions({ message, actions = [], context }) {
 
 module.exports = {
   executeAssistantActions,
+  findChannel,
   getActionType,
   isDangerousAction,
   isAdminMessage,
+  normalizeChannelName,
 };
