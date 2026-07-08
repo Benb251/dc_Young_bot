@@ -58,6 +58,7 @@ Assistant web fetch:
 - Public `http/https` pages only. Localhost and private network IPs are blocked.
 - HTML extraction prefers main/article content and strips common sidebar/navigation/table-of-contents blocks.
 - Article images are attached as section embeds near their original position, so Discord displays the image with the relevant text/caption without exposing raw image URLs.
+- X/Twitter status URLs are handled through the public oEmbed endpoint when available. Private/deleted/restricted posts may still be unreadable.
 
 Assistant moderation:
 

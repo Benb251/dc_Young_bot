@@ -55,6 +55,12 @@ function parsePublicUrl(rawUrl) {
   return parsed;
 }
 
+function isXStatusUrl(parsedUrl) {
+  const host = parsedUrl.hostname.toLowerCase();
+  return ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'].includes(host)
+    && /\/[^/]+\/status\/\d+/i.test(parsedUrl.pathname);
+}
+
 async function assertPublicHost(parsedUrl) {
   const hostname = parsedUrl.hostname;
   if (net.isIP(hostname)) {
@@ -76,6 +82,9 @@ function decodeHtmlEntities(text) {
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&mdash;/gi, '—')
+    .replace(/&ndash;/gi, '–')
+    .replace(/&hellip;/gi, '...')
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
 }
@@ -151,6 +160,54 @@ function extractTitle(html, fallbackUrl) {
   return title || fallbackUrl;
 }
 
+function stripHtmlToText(html) {
+  return decodeHtmlEntities(String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function fetchXStatusContent(parsedUrl, env = process.env) {
+  await assertPublicHost(parsedUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getWebTimeoutMs(env));
+
+  try {
+    const oembedUrl = new URL('https://publish.twitter.com/oembed');
+    oembedUrl.searchParams.set('omit_script', 'true');
+    oembedUrl.searchParams.set('dnt', 'true');
+    oembedUrl.searchParams.set('url', parsedUrl.toString());
+
+    const response = await fetch(oembedUrl.toString(), {
+      headers: {
+        'User-Agent': 'DiscordAssistantBot/1.0 (+public URL summarizer)',
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`X oEmbed lỗi HTTP ${response.status}.`);
+    }
+
+    const data = await response.json();
+    const text = stripHtmlToText(data.html || '');
+    return {
+      url: data.url || parsedUrl.toString(),
+      title: `${data.author_name || 'X'} on X`,
+      contentType: 'application/x-oembed+json',
+      imageUrls: [],
+      text,
+      sourceKind: 'x-status',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function resolveUrl(baseUrl, value) {
   try {
     return new URL(decodeHtmlEntities(value), baseUrl).toString();
@@ -204,6 +261,9 @@ function injectImageMarkers(html, baseUrl, limit = 8) {
 
 async function fetchUrlContent(rawUrl, env = process.env) {
   const parsedUrl = parsePublicUrl(rawUrl);
+  if (isXStatusUrl(parsedUrl)) {
+    return fetchXStatusContent(parsedUrl, env);
+  }
   await assertPublicHost(parsedUrl);
 
   const maxBytes = getWebMaxBytes(env);
@@ -442,9 +502,12 @@ module.exports = {
   extractMainHtml,
   extractReadableText,
   fetchUrlContent,
+  fetchXStatusContent,
   getWebMaxBytes,
   getWebTimeoutMs,
+  isXStatusUrl,
   isPrivateIp,
   parsePublicUrl,
+  stripHtmlToText,
   summarizeUrl,
 };

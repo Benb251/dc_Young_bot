@@ -297,6 +297,13 @@ async function main() {
   if (!web.isPrivateIp('127.0.0.1') || !web.isPrivateIp('192.168.1.2') || web.isPrivateIp('8.8.8.8')) {
     throw new Error('web private IP guard failed');
   }
+  if (!web.isXStatusUrl(web.parsePublicUrl('https://x.com/Nona_xai/status/2069376735561318745'))) {
+    throw new Error('web X status detection failed');
+  }
+  const tweetText = web.stripHtmlToText('<blockquote><p>Hello<br>World <a href="https://t.co/x">pic.twitter.com/x</a></p>&mdash; Nona (@Nona_xai) <a>June 23, 2026</a></blockquote>');
+  if (!tweetText.includes('Hello\nWorld') || !tweetText.includes('Nona')) {
+    throw new Error('web X oEmbed text extraction failed');
+  }
   let blockedLocalhost = false;
   try {
     web.parsePublicUrl('http://localhost:3000');
