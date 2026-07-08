@@ -55,6 +55,24 @@ async function main() {
   if (afterForget.length) {
     throw new Error('memory forget did not remove fact');
   }
+  await memory.upsertFact({
+    scope: 'guild',
+    title: 'Server profile: Test Guild',
+    content: 'Initial server profile.',
+    tags: ['server-profile'],
+    context,
+  });
+  await memory.upsertFact({
+    scope: 'guild',
+    title: 'Server profile: Test Guild',
+    content: 'Updated server profile.',
+    tags: ['server-profile'],
+    context,
+  });
+  const serverProfiles = await memory.listFacts({ query: 'server-profile', context, limit: 5 });
+  if (serverProfiles.length !== 1 || !serverProfiles[0].content.includes('Updated')) {
+    throw new Error('memory upsert failed');
+  }
 
   if (
     !isDangerousAction({ type: 'ban_member' })
@@ -73,6 +91,7 @@ async function main() {
     || isDangerousAction({ type: 'inspect_member' })
     || isDangerousAction({ type: 'search_messages' })
     || isDangerousAction({ type: 'schedule_reminder' })
+    || isDangerousAction({ type: 'learn_server' })
   ) {
     throw new Error('dangerous action classification failed');
   }
@@ -214,6 +233,14 @@ async function main() {
   const advisorPrompt = advisor.buildAdvisorPrompt({ snapshot, question: 'Next stage?', tasks: [] });
   if (!advisorPrompt.includes('Test Guild') || !advisorPrompt.includes('Next stage?')) {
     throw new Error('server advisor prompt failed');
+  }
+  const profilePrompt = advisor.buildServerProfilePrompt({ snapshot, notes: 'Friendly 3D community' });
+  if (!profilePrompt.includes('Friendly 3D community') || !profilePrompt.includes('Test Guild')) {
+    throw new Error('server profile prompt failed');
+  }
+  const fallbackProfile = advisor.buildFallbackServerProfile(snapshot, 'Friendly 3D community');
+  if (!fallbackProfile.includes('Test Guild') || !fallbackProfile.includes('Friendly 3D community')) {
+    throw new Error('server profile fallback failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

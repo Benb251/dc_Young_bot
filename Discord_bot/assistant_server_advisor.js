@@ -133,6 +133,46 @@ Hãy trả về:
 `.trim();
 }
 
+function buildServerProfilePrompt({ snapshot, notes }) {
+  return `
+Bạn đang tạo hồ sơ trí nhớ bền vững cho bot quản trị Discord.
+Hồ sơ này sẽ được lưu vào memory và dùng lại trong các lần trò chuyện sau.
+
+Ghi chú của admin:
+${notes || 'Không có ghi chú thêm.'}
+
+Snapshot server:
+${formatSnapshotBrief(snapshot)}
+
+Hãy viết bằng tiếng Việt, tối đa 900 ký tự, gồm:
+- Server này là cộng đồng gì.
+- Cấu trúc/kênh/role nổi bật.
+- Quy ước hoặc điểm cần nhớ cho trợ lý.
+- 2-4 ưu tiên vận hành gần nhất.
+Không bịa thông tin không có trong snapshot.
+`.trim();
+}
+
+function buildFallbackServerProfile(snapshot, notes) {
+  const categories = snapshot.categories.map(item => item.name).slice(0, 8).join(', ') || 'chưa thấy category';
+  const channels = snapshot.channels.map(item => `#${item.name}`).slice(0, 12).join(', ') || 'chưa thấy kênh text/forum';
+  const roles = snapshot.roles.map(item => item.name).slice(0, 10).join(', ') || 'chưa thấy role riêng';
+  const priorities = [];
+  if (!snapshot.channels.some(channel => /rule|nội|noi|luat|luật/i.test(channel.name))) priorities.push('hoàn thiện kênh nội quy/onboarding');
+  if (!snapshot.channels.some(channel => /qa|hỏi|hoi|dap|đáp|help/i.test(channel.name))) priorities.push('xây khu hỏi đáp rõ ràng');
+  if (snapshot.counts.roles < 4) priorities.push('thiết kế role nền cho member và phần mềm');
+  priorities.push('kiểm tra quyền bot trong các kênh chính');
+
+  return [
+    `Server "${snapshot.guild.name}" có ${snapshot.guild.memberCount ?? 'unknown'} members, ${snapshot.counts.channels} kênh và ${snapshot.counts.roles} role.`,
+    `Category nổi bật: ${categories}.`,
+    `Kênh bot thấy: ${channels}.`,
+    `Role nổi bật: ${roles}.`,
+    notes ? `Ghi chú admin: ${cleanLine(notes, 220)}.` : '',
+    `Ưu tiên gần nhất: ${priorities.slice(0, 4).join('; ')}.`,
+  ].filter(Boolean).join(' ');
+}
+
 function buildFallbackAdvice(snapshot, tasks = []) {
   const recommendations = [];
   if (!snapshot.counts.categories) recommendations.push('Tạo category rõ ràng cho thông báo, hỏi đáp, khoe work, tài nguyên và voice.');
@@ -182,10 +222,29 @@ async function analyzeServer({ guild, args = {}, tasks = [] }) {
   }
 }
 
+async function generateServerProfile({ guild, args = {} }) {
+  if (!guild) return null;
+  const snapshot = buildServerSnapshot(guild, args);
+  const notes = args.notes || args.note || args.context || args.question || args.goal || '';
+  const prompt = buildServerProfilePrompt({ snapshot, notes });
+
+  try {
+    return await getAIChatResponse([
+      { role: 'user', content: prompt },
+    ], [], { temperature: 0.2 });
+  } catch (error) {
+    console.error('[ASSISTANT ADVISOR] Server profile generation failed:', error);
+    return buildFallbackServerProfile(snapshot, notes);
+  }
+}
+
 module.exports = {
   analyzeServer,
   buildAdvisorPrompt,
+  buildFallbackServerProfile,
+  buildServerProfilePrompt,
   buildFallbackAdvice,
   buildServerSnapshot,
   formatSnapshotBrief,
+  generateServerProfile,
 };

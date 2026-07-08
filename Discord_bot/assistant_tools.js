@@ -5,12 +5,13 @@ const {
   listFacts,
   recallFacts,
   rememberFact,
+  upsertFact,
 } = require('./assistant_memory.js');
 const { cancelReminder, createReminder, listReminders } = require('./assistant_reminders.js');
 const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_status.js');
 const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
-const { analyzeServer } = require('./assistant_server_advisor.js');
+const { analyzeServer, generateServerProfile } = require('./assistant_server_advisor.js');
 
 const ADMIN_ACTIONS = new Set([
   'analyze_server',
@@ -27,6 +28,7 @@ const ADMIN_ACTIONS = new Set([
   'inspect_server',
   'inspect_member',
   'kick_member',
+  'learn_server',
   'list_channels',
   'list_tasks',
   'list_warnings',
@@ -619,6 +621,22 @@ async function executeAssistantActions({ message, actions = [], context }) {
           limit: args.taskLimit || 10,
         });
         results.push(await analyzeServer({ guild, args, tasks }));
+      } else if (type === 'learn_server') {
+        if (!guild) {
+          results.push('Không thể kết nối tới server để học hồ sơ.');
+          continue;
+        }
+        const profile = await generateServerProfile({ guild, args });
+        const fact = await upsertFact({
+          scope: 'guild',
+          title: args.title || `Server profile: ${guild.name}`,
+          content: profile,
+          tags: ['server-profile', 'auto-learn'],
+          context,
+        });
+        results.push(fact
+          ? `Đã học và lưu hồ sơ server vào memory guild: ${fact.title}.`
+          : 'Không tạo được hồ sơ server hợp lệ để lưu.');
       } else if (type === 'search_messages') {
         results.push(await searchMessages(message, args));
       } else if (type === 'schedule_reminder') {

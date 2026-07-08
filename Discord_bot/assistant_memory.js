@@ -72,6 +72,49 @@ async function rememberFact({ scope, title, content, tags = [], context }) {
   return fact;
 }
 
+async function upsertFact({ scope, title, content, tags = [], context }) {
+  const store = await ensureStore();
+  const now = new Date().toISOString();
+  const normalizedScope = normalizeScope(scope);
+  const normalizedTitle = String(title || 'Ghi nhớ').slice(0, 120);
+  const normalizedTags = Array.isArray(tags) ? tags.map(tag => String(tag).slice(0, 40)).slice(0, 8) : [];
+  const normalizedContent = String(content || '').slice(0, 1200);
+  if (!normalizedContent.trim()) return null;
+
+  const existing = store.facts.find(fact => (
+    fact.scope === normalizedScope
+    && fact.title === normalizedTitle
+    && (fact.guildId || null) === (context.guildId || null)
+    && (fact.channelId || null) === (normalizedScope === 'channel' ? context.channelId || null : fact.channelId || null)
+    && (fact.userId || null) === (normalizedScope === 'user' ? context.userId || null : fact.userId || null)
+  ));
+
+  if (existing) {
+    existing.content = normalizedContent;
+    existing.tags = normalizedTags;
+    existing.updatedAt = now;
+    await saveStore(store);
+    return existing;
+  }
+
+  const fact = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    scope: normalizedScope,
+    title: normalizedTitle,
+    content: normalizedContent,
+    tags: normalizedTags,
+    guildId: context.guildId || null,
+    channelId: normalizedScope === 'channel' ? context.channelId || null : context.channelId || null,
+    userId: normalizedScope === 'user' ? context.userId || null : context.userId || null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.facts.push(fact);
+  store.facts = store.facts.slice(-Number(process.env.ASSISTANT_MAX_FACTS || 500));
+  await saveStore(store);
+  return fact;
+}
+
 async function recallFacts(query, context, limit = 8) {
   const store = await ensureStore();
   return store.facts
@@ -149,4 +192,5 @@ module.exports = {
   listFacts,
   recallFacts,
   rememberFact,
+  upsertFact,
 };
