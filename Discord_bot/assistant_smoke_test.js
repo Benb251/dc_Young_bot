@@ -314,6 +314,11 @@ async function main() {
   if (imageUrls[0] !== 'https://docs.example.com/images/intro.png' || imageUrls[1] !== 'https://cdn.example.com/a.jpg') {
     throw new Error('web image extraction failed');
   }
+  const markedImages = web.injectImageMarkers('<p>Before</p><img src="/shot.png"><p>After</p>', 'https://docs.example.com/page.html');
+  const markedText = web.extractReadableText(markedImages.html);
+  if (!markedText.includes('Before') || !markedText.includes('[HINH_1: https://docs.example.com/shot.png]') || !markedText.includes('After')) {
+    throw new Error('web inline image marker failed');
+  }
   const mainHtml = web.extractMainHtml([
     '<html><body>',
     '<aside class="sidebar"><h2>Muc luc chinh</h2><a>Topbar</a><a>Workspaces</a></aside>',

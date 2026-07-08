@@ -185,6 +185,23 @@ function extractImageUrls(html, baseUrl, limit = 8) {
   return urls.slice(0, limit);
 }
 
+function injectImageMarkers(html, baseUrl, limit = 8) {
+  let index = 0;
+  const imageUrls = [];
+  const seen = new Set();
+  const addMarker = value => {
+    const resolved = resolveUrl(baseUrl, value);
+    if (!resolved || seen.has(resolved) || !/^https?:\/\//i.test(resolved) || index >= limit) return '';
+    seen.add(resolved);
+    index += 1;
+    imageUrls.push(resolved);
+    return `\n[HINH_${index}: ${resolved}]\n`;
+  };
+
+  const htmlWithMarkers = String(html || '').replace(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/gi, (_, src) => addMarker(src));
+  return { html: htmlWithMarkers, imageUrls };
+}
+
 async function fetchUrlContent(rawUrl, env = process.env) {
   const parsedUrl = parsePublicUrl(rawUrl);
   await assertPublicHost(parsedUrl);
@@ -216,12 +233,16 @@ async function fetchUrlContent(rawUrl, env = process.env) {
     const raw = await response.text();
     const finalUrl = response.url || parsedUrl.toString();
     const mainHtml = /html/i.test(contentType) ? extractMainHtml(raw) : raw;
-    const text = /html/i.test(contentType) ? extractReadableText(mainHtml) : raw.trim();
+    const imageLimit = Number(env.ASSISTANT_WEB_IMAGE_LIMIT || 8);
+    const marked = /html/i.test(contentType)
+      ? injectImageMarkers(mainHtml, finalUrl, imageLimit)
+      : { html: raw, imageUrls: [] };
+    const text = /html/i.test(contentType) ? extractReadableText(marked.html) : raw.trim();
     return {
       url: finalUrl,
       title: /html/i.test(contentType) ? extractTitle(raw, finalUrl) : parsedUrl.toString(),
       contentType,
-      imageUrls: /html/i.test(contentType) ? extractImageUrls(mainHtml, finalUrl, Number(env.ASSISTANT_WEB_IMAGE_LIMIT || 8)) : [],
+      imageUrls: marked.imageUrls.length ? marked.imageUrls : (/html/i.test(contentType) ? extractImageUrls(mainHtml, finalUrl, imageLimit) : []),
       text: text.slice(0, maxBytes),
     };
   } finally {
@@ -295,6 +316,9 @@ async function buildForumResourcePost(args = {}) {
   const contentLimit = faithfulTranslation ? 11000 : 5200;
   const prompt = `
 ${styleInstruction}
+Khi thấy marker dạng [HINH_1: URL], hãy giữ URL ảnh ở đúng vị trí liên quan trong bài Discord.
+Không gom toàn bộ ảnh xuống cuối bài. Không xoá URL ảnh trừ khi đó là logo/trang trí rõ ràng.
+Trong Discord, ảnh chỉ cần đặt URL ảnh trên một dòng riêng ngay dưới đoạn/caption liên quan để hiện preview.
 
 URL nguồn: ${page.url}
 Title nguồn: ${page.title}
@@ -350,6 +374,7 @@ module.exports = {
   chunkDiscordText,
   decodeHtmlEntities,
   extractImageUrls,
+  injectImageMarkers,
   extractMainHtml,
   extractReadableText,
   fetchUrlContent,

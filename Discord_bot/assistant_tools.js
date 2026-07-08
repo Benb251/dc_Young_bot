@@ -709,12 +709,6 @@ async function executeAssistantActions({ message, actions = [], context }) {
         for (const chunk of chunks) {
           await thread.send(chunk);
         }
-        if (post.imageUrls.length) {
-          await thread.send([
-            'Hình minh họa từ trang nguồn:',
-            ...post.imageUrls,
-          ].join('\n').slice(0, 1900));
-        }
         const tagNote = describeForumTags(channel, thread.appliedTags || [])
           || describeForumTags(channel, resolveForumTagIds(channel, args.tags, { fallback: true }));
         results.push(`Đã đăng resource từ URL thành thread/forum post <#${thread.id}>.${tagNote ? ` Tag: ${tagNote}.` : ''}`);
