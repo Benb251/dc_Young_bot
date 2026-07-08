@@ -293,6 +293,69 @@ function chunkDiscordText(text, max = 1850) {
   return chunks;
 }
 
+function lineContainsAnyImageUrl(line, imageUrls) {
+  return imageUrls.find(url => String(line || '').includes(url)) || null;
+}
+
+function buildResourceMessageParts(content, imageUrls = []) {
+  const parts = [];
+  const knownImages = Array.isArray(imageUrls) ? imageUrls : [];
+  const lines = String(content || '').split(/\r?\n/);
+  let buffer = [];
+
+  const flushText = () => {
+    const text = buffer.join('\n').trim();
+    buffer = [];
+    if (!text) return;
+    for (const chunk of chunkDiscordText(text)) {
+      parts.push({ content: chunk });
+    }
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const imageUrl = lineContainsAnyImageUrl(line, knownImages);
+    if (!imageUrl) {
+      buffer.push(line);
+      continue;
+    }
+
+    const textBeforeImage = buffer.join('\n').trim();
+    buffer = [];
+    const caption = [];
+    let cursor = i + 1;
+    while (cursor < lines.length && caption.length < 2) {
+      const nextLine = lines[cursor];
+      const trimmed = nextLine.trim();
+      if (!trimmed) {
+        cursor += 1;
+        continue;
+      }
+      if (lineContainsAnyImageUrl(nextLine, knownImages) || /^#{1,4}\s/.test(trimmed) || /^Nguồn\s*:/i.test(trimmed)) {
+        break;
+      }
+      if (trimmed.length > 240) break;
+      caption.push(nextLine);
+      cursor += 1;
+    }
+    if (caption.length) i = cursor - 1;
+
+    const description = [textBeforeImage, caption.join('\n').trim()]
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+    parts.push({
+      embed: {
+        description: description || 'Hình minh họa từ tài liệu nguồn.',
+        imageUrl,
+      },
+    });
+  }
+
+  flushText();
+  return parts;
+}
+
 async function buildForumResourcePost(args = {}) {
   const url = args.url || args.link;
   if (!url) return null;
@@ -371,6 +434,7 @@ Trả về JSON hợp lệ, không markdown code block:
 
 module.exports = {
   buildForumResourcePost,
+  buildResourceMessageParts,
   chunkDiscordText,
   decodeHtmlEntities,
   extractImageUrls,

@@ -319,6 +319,18 @@ async function main() {
   if (!markedText.includes('Before') || !markedText.includes('[HINH_1: https://docs.example.com/shot.png]') || !markedText.includes('After')) {
     throw new Error('web inline image marker failed');
   }
+  const resourceParts = web.buildResourceMessageParts([
+    'Intro paragraph.',
+    'https://docs.example.com/shot.png',
+    '**Caption for shot.**',
+    'Next paragraph.',
+  ].join('\n'), ['https://docs.example.com/shot.png']);
+  if (!resourceParts[0]?.embed || resourceParts[0].embed.imageUrl !== 'https://docs.example.com/shot.png' || !resourceParts[0].embed.description.includes('Caption for shot')) {
+    throw new Error('web resource image embed part failed');
+  }
+  if (resourceParts.some(part => part.content?.includes('https://docs.example.com/shot.png'))) {
+    throw new Error('web resource text leaked raw image URL');
+  }
   const mainHtml = web.extractMainHtml([
     '<html><body>',
     '<aside class="sidebar"><h2>Muc luc chinh</h2><a>Topbar</a><a>Workspaces</a></aside>',

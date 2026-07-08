@@ -12,7 +12,7 @@ const { collectAssistantStatus, formatAssistantStatus } = require('./assistant_s
 const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.js');
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 const { analyzeServer, generateServerProfile } = require('./assistant_server_advisor.js');
-const { buildForumResourcePost, chunkDiscordText, summarizeUrl } = require('./assistant_web.js');
+const { buildForumResourcePost, buildResourceMessageParts, summarizeUrl } = require('./assistant_web.js');
 
 const ADMIN_ACTIONS = new Set([
   'analyze_server',
@@ -361,6 +361,17 @@ function buildAssistantEmbed(args) {
   return embed;
 }
 
+function buildResourceMessagePayload(part) {
+  if (part?.embed?.imageUrl) {
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setDescription(String(part.embed.description || 'Hình minh họa từ tài liệu nguồn.').slice(0, 4096))
+      .setImage(part.embed.imageUrl);
+    return { embeds: [embed] };
+  }
+  return { content: String(part?.content || '').slice(0, 1900) || 'Nguồn tài liệu đã được xử lý.' };
+}
+
 function normalizeAutoArchiveDuration(value) {
   const minutes = Number(value) || 1440;
   const allowed = [60, 1440, 4320, 10080];
@@ -683,7 +694,8 @@ async function executeAssistantActions({ message, actions = [], context }) {
           results.push('Không tạo được nội dung bài resource từ URL này.');
           continue;
         }
-        const chunks = chunkDiscordText(post.content);
+        const parts = buildResourceMessageParts(post.content, post.imageUrls);
+        const firstPart = parts.shift() || { content: post.sourceUrl };
         let thread = null;
         if (channel.type === ChannelType.GuildForum) {
           const appliedTags = resolveForumTagIds(channel, args.tags, { fallback: true });
@@ -691,7 +703,7 @@ async function executeAssistantActions({ message, actions = [], context }) {
             name: post.title,
             autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
             appliedTags,
-            message: { content: chunks.shift() || post.sourceUrl },
+            message: buildResourceMessagePayload(firstPart),
             reason: `Assistant URL resource post by ${message.author.tag}`,
           });
         } else if (channel.threads?.create) {
@@ -700,14 +712,14 @@ async function executeAssistantActions({ message, actions = [], context }) {
             autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
             reason: `Assistant URL resource thread by ${message.author.tag}`,
           });
-          await thread.send(chunks.shift() || post.sourceUrl);
+          await thread.send(buildResourceMessagePayload(firstPart));
         } else {
           results.push('Kênh này không hỗ trợ tạo forum post/thread.');
           continue;
         }
 
-        for (const chunk of chunks) {
-          await thread.send(chunk);
+        for (const part of parts) {
+          await thread.send(buildResourceMessagePayload(part));
         }
         const tagNote = describeForumTags(channel, thread.appliedTags || [])
           || describeForumTags(channel, resolveForumTagIds(channel, args.tags, { fallback: true }));

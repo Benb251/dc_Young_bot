@@ -57,7 +57,7 @@ Assistant web fetch:
 - `ASSISTANT_WEB_IMAGE_LIMIT`, default `8`.
 - Public `http/https` pages only. Localhost and private network IPs are blocked.
 - HTML extraction prefers main/article content and strips common sidebar/navigation/table-of-contents blocks.
-- Article images are injected into the translated content near their original position instead of being posted as a separate image list at the end.
+- Article images are attached as section embeds near their original position, so Discord displays the image with the relevant text/caption without exposing raw image URLs.
 
 Assistant moderation:
 
