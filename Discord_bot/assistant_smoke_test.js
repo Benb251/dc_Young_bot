@@ -119,6 +119,18 @@ async function main() {
   if (await tools.findChannel(fakeGuild, 'forum tai-nguyen id 1522895554735112332') !== fakeChannel) {
     throw new Error('channel lookup by embedded id failed');
   }
+  const fakeForum = {
+    availableTags: [
+      { id: 'tag-resource', name: 'Tài nguyên' },
+      { id: 'tag-blender', name: 'Blender' },
+    ],
+  };
+  if (tools.resolveForumTagIds(fakeForum, ['tai-nguyen'])[0] !== 'tag-resource') {
+    throw new Error('forum tag lookup by ascii name failed');
+  }
+  if (tools.resolveForumTagIds(fakeForum, [], { fallback: true })[0] !== 'tag-resource') {
+    throw new Error('forum tag fallback failed');
+  }
 
   const pending = confirmations.createPendingConfirmation(context, {
     actions: [{ type: 'delete_messages', count: 2 }],

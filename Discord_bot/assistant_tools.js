@@ -367,19 +367,38 @@ function normalizeAutoArchiveDuration(value) {
   return allowed.includes(minutes) ? minutes : 1440;
 }
 
-function resolveForumTagIds(channel, tags) {
-  if (!Array.isArray(tags) || !channel?.availableTags) return [];
-  return tags
+function resolveForumTagIds(channel, tags, options = {}) {
+  if (!channel?.availableTags?.length) return [];
+  const requestedTags = Array.isArray(tags) ? tags : [];
+  const matched = requestedTags
     .map(tag => String(tag).trim().toLowerCase())
     .filter(Boolean)
     .map(wanted => {
       const byId = channel.availableTags.find(item => item.id === wanted);
       if (byId) return byId.id;
-      const byName = channel.availableTags.find(item => item.name.toLowerCase().includes(wanted));
+      const normalizedWanted = normalizeChannelName(wanted);
+      const byName = channel.availableTags.find(item => {
+        const normalizedName = normalizeChannelName(item.name);
+        return normalizedName === normalizedWanted
+          || normalizedName.includes(normalizedWanted)
+          || normalizedWanted.includes(normalizedName);
+      });
       return byName?.id || null;
     })
     .filter(Boolean)
     .slice(0, 5);
+  if (!matched.length && options.fallback) {
+    return [channel.availableTags[0].id];
+  }
+  return matched;
+}
+
+function describeForumTags(channel, tagIds) {
+  if (!channel?.availableTags?.length || !tagIds?.length) return '';
+  return tagIds
+    .map(id => channel.availableTags.find(tag => tag.id === id)?.name)
+    .filter(Boolean)
+    .join(', ');
 }
 
 async function summarizeChannel(channel, count) {
@@ -667,10 +686,11 @@ async function executeAssistantActions({ message, actions = [], context }) {
         const chunks = chunkDiscordText(post.content);
         let thread = null;
         if (channel.type === ChannelType.GuildForum) {
+          const appliedTags = resolveForumTagIds(channel, args.tags, { fallback: true });
           thread = await channel.threads.create({
             name: post.title,
             autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
-            appliedTags: resolveForumTagIds(channel, args.tags),
+            appliedTags,
             message: { content: chunks.shift() || post.sourceUrl },
             reason: `Assistant URL resource post by ${message.author.tag}`,
           });
@@ -695,7 +715,9 @@ async function executeAssistantActions({ message, actions = [], context }) {
             ...post.imageUrls,
           ].join('\n').slice(0, 1900));
         }
-        results.push(`Đã đăng resource từ URL thành thread/forum post <#${thread.id}>.`);
+        const tagNote = describeForumTags(channel, thread.appliedTags || [])
+          || describeForumTags(channel, resolveForumTagIds(channel, args.tags, { fallback: true }));
+        results.push(`Đã đăng resource từ URL thành thread/forum post <#${thread.id}>.${tagNote ? ` Tag: ${tagNote}.` : ''}`);
       } else if (type === 'schedule_reminder') {
         const reminder = await createReminder({ args, context, message });
         results.push(reminder
@@ -785,14 +807,16 @@ async function executeAssistantActions({ message, actions = [], context }) {
             results.push('Forum post cần nội dung mở đầu.');
             continue;
           }
+          const appliedTags = resolveForumTagIds(channel, args.tags, { fallback: true });
           const thread = await channel.threads.create({
             name,
             autoArchiveDuration: normalizeAutoArchiveDuration(args.autoArchiveDuration),
-            appliedTags: resolveForumTagIds(channel, args.tags),
+            appliedTags,
             message: { content },
             reason: `Assistant command by ${message.author.tag}`,
           });
-          results.push(`Đã tạo forum post <#${thread.id}> trong #${channel.name}.`);
+          const tagNote = describeForumTags(channel, thread.appliedTags || appliedTags);
+          results.push(`Đã tạo forum post <#${thread.id}> trong #${channel.name}.${tagNote ? ` Tag: ${tagNote}.` : ''}`);
         } else if (channel.threads?.create) {
           const thread = await channel.threads.create({
             name,
@@ -1056,4 +1080,5 @@ module.exports = {
   isDangerousAction,
   isAdminMessage,
   normalizeChannelName,
+  resolveForumTagIds,
 };
