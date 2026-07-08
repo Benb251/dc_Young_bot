@@ -39,6 +39,17 @@ Assistant tasks:
 - `ASSISTANT_TASK_FILE`, default `Discord_bot/data/assistant_tasks.json`
 - `ASSISTANT_MAX_TASKS`, default `500`
 
+Assistant onboarding:
+
+- `ASSISTANT_WELCOME_ENABLED`, default `false`; set `true` to enable the new member workflow.
+- `ASSISTANT_WELCOME_CHANNEL_ID`, optional channel ID for public welcome embeds.
+- `ASSISTANT_WELCOME_DM`, default `false`; set `true` to DM new members.
+- `ASSISTANT_WELCOME_ROLE_ID`, optional role ID to auto-assign on join.
+- `ASSISTANT_RULES_CHANNEL_ID`, optional rules channel linked in the welcome embed.
+- `ASSISTANT_INTRO_CHANNEL_ID`, optional introduction channel linked in the welcome embed.
+- `ASSISTANT_HELP_CHANNEL_ID`, optional help/Q&A channel linked in the welcome embed.
+- `ASSISTANT_WELCOME_TITLE`, `ASSISTANT_WELCOME_MESSAGE`, and `ASSISTANT_WELCOME_DM_MESSAGE` support `{user}`, `{username}`, `{server}`, and `{memberCount}`.
+
 Assistant moderation:
 
 - `ASSISTANT_WARNING_FILE`, default `Discord_bot/data/assistant_warnings.json`
@@ -61,6 +72,7 @@ Assistant safety:
 - Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
+- When enabled, onboarding can welcome new members, DM them, and assign one starter role through `guildMemberAdd`.
 - Every assistant tool decision is written to console audit logs, and optionally to `ASSISTANT_AUDIT_CHANNEL_ID`.
 - `assistant_status` reports runtime, AI model chain, store health, and memory/reminder/warning counts.
 - `analyze_server` lets admins ask for a practical operations roadmap based on the visible server structure and open task backlog.

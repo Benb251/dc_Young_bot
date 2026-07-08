@@ -22,6 +22,7 @@ const status = require('./assistant_status.js');
 const tasks = require('./assistant_tasks.js');
 const warnings = require('./assistant_warnings.js');
 const advisor = require('./assistant_server_advisor.js');
+const onboarding = require('./assistant_onboarding.js');
 
 async function main() {
   const parsed = extractJson('```json\n{"reply":"ok","actions":[]}\n```');
@@ -241,6 +242,21 @@ async function main() {
   const fallbackProfile = advisor.buildFallbackServerProfile(snapshot, 'Friendly 3D community');
   if (!fallbackProfile.includes('Test Guild') || !fallbackProfile.includes('Friendly 3D community')) {
     throw new Error('server profile fallback failed');
+  }
+
+  const welcomeConfig = onboarding.getOnboardingConfig({
+    ASSISTANT_WELCOME_ENABLED: 'true',
+    ASSISTANT_WELCOME_CHANNEL_ID: 'welcome',
+    ASSISTANT_WELCOME_MESSAGE: 'Hi {user} to {server} #{memberCount}',
+  });
+  const fakeMember = {
+    id: 'member',
+    displayName: 'Member',
+    user: { username: 'Member', tag: 'Member#0001' },
+    guild: { name: 'Test Guild', memberCount: 14 },
+  };
+  if (!welcomeConfig.enabled || !onboarding.fillTemplate(welcomeConfig.message, fakeMember).includes('<@member>')) {
+    throw new Error('onboarding config/template failed');
   }
 
   await fs.rm(tempMemoryPath, { force: true });

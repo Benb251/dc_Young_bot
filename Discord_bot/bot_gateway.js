@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Partials, ChannelType, EmbedBuilder } = requi
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
@@ -100,6 +101,7 @@ client.once('ready', () => {
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
 const { handleAssistantMessage } = require('./assistant_brain.js');
+const { handleGuildMemberAdd } = require('./assistant_onboarding.js');
 const { startReminderLoop } = require('./assistant_reminders.js');
 
 // Helper to get status tag IDs from a forum channel
@@ -239,6 +241,17 @@ client.on('threadCreate', async (thread) => {
     }
   } catch (error) {
     console.error('Error in threadCreate handler:', error);
+  }
+});
+
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const results = await handleGuildMemberAdd(member);
+    if (results.length) {
+      console.log(`[ONBOARDING] ${member.user.tag}: ${results.join('; ')}`);
+    }
+  } catch (error) {
+    console.error('[ONBOARDING] guildMemberAdd failed:', error);
   }
 });
 
