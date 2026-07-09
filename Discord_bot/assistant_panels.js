@@ -3,13 +3,13 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  PermissionsBitField,
 } = require('discord.js');
 
 /**
- * Panel builders mirror cf-bot custom_ids so the same interaction handlers
- * can process clicks when the gateway bot is the application that sent them.
- * If interactions are handled by a separate Workers bot, buttons only work
- * when that bot also receives the component interaction (same application).
+ * Panel builders mirror cf-bot custom_ids.
+ * When the gateway bot sends the panel, THIS process must handle clicks.
+ * When cf-bot (Workers) sent the panel, Workers handle clicks instead.
  */
 
 const BUTTON_IDS = {
@@ -109,8 +109,124 @@ function buildRulesPanelPayload(args = {}) {
     .setFooter({ text: 'Tổ Young Phố' })
     .setTimestamp();
 
-  // Rules panel is embed-only (no button dependency on cf-bot).
   return { embeds: [embed] };
+}
+
+async function resolveGuildMember(interaction) {
+  if (!interaction.guild) return null;
+  if (interaction.member?.roles?.add) {
+    // Ensure cache is usable
+    try {
+      await interaction.member.fetch().catch(() => null);
+    } catch {
+      /* ignore */
+    }
+    return interaction.member;
+  }
+  return interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+}
+
+async function assertBotCanAssignRole(guild, roleId) {
+  const botMember = guild.members.me
+    || await guild.members.fetchMe().catch(() => null);
+  if (!botMember) return 'Không tìm thấy bot member trong server.';
+
+  if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return 'Bot thiếu quyền **Manage Roles**.';
+  }
+
+  const role = await guild.roles.fetch(roleId).catch(() => null);
+  if (!role) return `Không tìm thấy role id \`${roleId}\` (có thể role đã bị xóa/đổi).`;
+
+  if (role.managed) return `Role **${role.name}** do integration quản lý, bot không gán được.`;
+
+  if (role.position >= botMember.roles.highest.position) {
+    return `Role bot phải **cao hơn** role **${role.name}** trong Server Settings → Roles.`;
+  }
+
+  return null;
+}
+
+async function handleVisaButton(interaction) {
+  const roleId = VISA_ROLE_ID;
+  const member = await resolveGuildMember(interaction);
+  if (!member) {
+    await interaction.reply({
+      content: '❌ Không đọc được member. Hãy bấm nút **trong server** (không phải DM).',
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (member.roles.cache.has(roleId)) {
+    await interaction.reply({
+      content: '🎟️ Bạn đã có Visa (Cư dân) rồi.',
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const hierarchyError = await assertBotCanAssignRole(interaction.guild, roleId);
+  if (hierarchyError) {
+    await interaction.reply({
+      content: `❌ Không gán được Visa: ${hierarchyError}`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    await member.roles.add(roleId, 'Visa panel button (gateway)');
+    await interaction.editReply({
+      content: '✅ Đã cấp Visa — chào mừng Cư dân! Hãy chọn role phần mềm ở kênh chọn vai trò.',
+    });
+  } catch (error) {
+    const msg = error?.message || String(error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: `❌ Không gán được role Visa: ${msg}` }).catch(() => null);
+    } else {
+      await interaction.reply({ content: `❌ Không gán được role Visa: ${msg}`, ephemeral: true }).catch(() => null);
+    }
+  }
+  return true;
+}
+
+async function handleSoftwareRoleButton(interaction, roleId) {
+  const member = await resolveGuildMember(interaction);
+  if (!member?.roles?.add) {
+    await interaction.reply({
+      content: '❌ Bot gateway không đọc được member. Hãy dùng panel do đúng bot gửi trong server.',
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const hierarchyError = await assertBotCanAssignRole(interaction.guild, roleId);
+  if (hierarchyError) {
+    await interaction.reply({ content: `❌ ${hierarchyError}`, ephemeral: true });
+    return true;
+  }
+
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    const hasRole = member.roles.cache.has(roleId);
+    if (hasRole) {
+      await member.roles.remove(roleId, 'Role panel toggle (gateway)');
+      await interaction.editReply({ content: 'Đã gỡ role.' });
+    } else {
+      await member.roles.add(roleId, 'Role panel toggle (gateway)');
+      await interaction.editReply({ content: 'Đã gán role.' });
+    }
+  } catch (error) {
+    const msg = error?.message || String(error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: `❌ Lỗi role: ${msg}` }).catch(() => null);
+    } else {
+      await interaction.reply({ content: `❌ Lỗi role: ${msg}`, ephemeral: true }).catch(() => null);
+    }
+  }
+  return true;
 }
 
 async function handlePanelButtonInteraction(interaction) {
@@ -118,59 +234,19 @@ async function handlePanelButtonInteraction(interaction) {
 
   const customId = interaction.customId;
   if (customId === BUTTON_IDS.VISA_BTN) {
-    const roleId = VISA_ROLE_ID;
-    const member = interaction.member;
-    if (!member?.roles) {
-      await interaction.reply({ content: 'Không đọc được member.', ephemeral: true });
-      return true;
-    }
-    if (member.roles.cache?.has(roleId) || member.roles?.includes?.(roleId)) {
-      await interaction.reply({ content: 'Bạn đã có Visa rồi.', ephemeral: true });
-      return true;
-    }
-    try {
-      if (member.roles.add) await member.roles.add(roleId, 'Visa panel button');
-      else return false;
-      await interaction.reply({ content: 'Đã cấp Visa — chào mừng Cư dân!', ephemeral: true });
-    } catch (error) {
-      await interaction.reply({
-        content: `Không gán được role Visa: ${error.message}`,
-        ephemeral: true,
-      });
-    }
-    return true;
+    return handleVisaButton(interaction);
   }
 
   const roleId = DEFAULT_ROLE_MAP[customId];
   if (!roleId) return false;
 
-  const member = interaction.member;
-  if (!member?.roles?.add) {
-    await interaction.reply({
-      content: 'Bot gateway chưa handle được interaction kiểu này (cần guild member cache).',
-      ephemeral: true,
-    });
-    return true;
-  }
-
-  const hasRole = member.roles.cache.has(roleId);
-  try {
-    if (hasRole) {
-      await member.roles.remove(roleId, 'Role panel toggle');
-      await interaction.reply({ content: 'Đã gỡ role.', ephemeral: true });
-    } else {
-      await member.roles.add(roleId, 'Role panel toggle');
-      await interaction.reply({ content: 'Đã gán role.', ephemeral: true });
-    }
-  } catch (error) {
-    await interaction.reply({ content: `Lỗi role: ${error.message}`, ephemeral: true });
-  }
-  return true;
+  return handleSoftwareRoleButton(interaction, roleId);
 }
 
 module.exports = {
   BUTTON_IDS,
   DEFAULT_ROLE_MAP,
+  VISA_ROLE_ID,
   buildRolesPanelPayload,
   buildVisaPanelPayload,
   buildRulesPanelPayload,

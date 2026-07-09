@@ -266,25 +266,28 @@ async function markThreadAsSolved(thread, triggerUser) {
   }
 }
 
-// Register FIRST and keep the confirm path as lean as possible.
-client.on('interactionCreate', (interaction) => {
-  // Do not await heavy work before scheduling confirm handler — ack happens inside.
-  Promise.resolve()
-    .then(async () => {
-      if (await handleAssistantConfirmationButton(interaction)) return;
-      try {
-        const handled = await handlePanelButtonInteraction(interaction);
-        if (!handled && interaction.isButton?.() && interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'Nút này không còn được hỗ trợ.', ephemeral: true }).catch(() => null);
-        }
-      } catch (error) {
-        console.error('[INTERACTION] panel/other failed:', error);
-        if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'Không xử lý được nút này.', ephemeral: true }).catch(() => null);
-        }
-      }
-    })
-    .catch(error => console.error('[INTERACTION] unhandled:', error));
+// Interactions: confirm buttons + role/visa panels (must ACK quickly).
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (await handleAssistantConfirmationButton(interaction)) return;
+
+    if (interaction.isButton?.()) {
+      console.log(`[INTERACTION] panel/button customId=${interaction.customId} user=${interaction.user?.id}`);
+    }
+
+    const handled = await handlePanelButtonInteraction(interaction);
+    if (!handled && interaction.isButton?.() && interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Nút này không còn được hỗ trợ trên bot gateway.', ephemeral: true }).catch(() => null);
+    }
+  } catch (error) {
+    console.error('[INTERACTION] failed:', error);
+    if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: `Không xử lý được nút: ${error.message || error}`,
+        ephemeral: true,
+      }).catch(() => null);
+    }
+  }
 });
 
 // ── 2. Event: Message Created (Detect triggers like "đã giải quyết" or "/done", or tag bot for AI) ──
