@@ -97,6 +97,18 @@ function getPendingConfirmationByToken(token) {
   return pendingByToken.get(String(token).toLowerCase()) || null;
 }
 
+function getPendingByConfirmMessageId(messageId) {
+  cleanupExpired();
+  if (!messageId) return null;
+  const id = String(messageId);
+  for (const pending of pendingConfirmations.values()) {
+    if (pending.confirmMessageId && String(pending.confirmMessageId) === id) {
+      return pending;
+    }
+  }
+  return null;
+}
+
 function consumePendingConfirmation(context) {
   const pending = getPendingConfirmationFlexible(context);
   if (!pending) return null;
@@ -242,6 +254,7 @@ module.exports = {
   consumePendingConfirmationByToken,
   createPendingConfirmation,
   disabledConfirmationComponents,
+  getPendingByConfirmMessageId,
   getPendingConfirmation,
   getPendingConfirmationByToken,
   getPendingConfirmationFlexible,

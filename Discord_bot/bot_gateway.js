@@ -101,7 +101,10 @@ client.once('ready', () => {
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
 const { handleAssistantMessage } = require('./assistant_brain.js');
-const { handleAssistantConfirmationButton } = require('./assistant_confirm_handler.js');
+const {
+  handleAssistantConfirmationButton,
+  handleConfirmReaction,
+} = require('./assistant_confirm_handler.js');
 const {
   getPendingConfirmationFlexible,
   isCancelMessage,
@@ -263,23 +266,25 @@ async function markThreadAsSolved(thread, triggerUser) {
   }
 }
 
-client.on('interactionCreate', async (interaction) => {
-  try {
-    if (interaction.isButton?.()) {
-      console.log(`[INTERACTION] button customId=${interaction.customId} user=${interaction.user?.id}`);
-    }
-    if (await handleAssistantConfirmationButton(interaction)) return;
-    const handled = await handlePanelButtonInteraction(interaction);
-    if (!handled && interaction.isButton?.() && interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
-      // Unknown button — still ack so Discord does not show "interaction failed"
-      await interaction.reply({ content: 'Nút này không còn được hỗ trợ.', ephemeral: true }).catch(() => null);
-    }
-  } catch (error) {
-    console.error('[INTERACTION] button failed:', error);
-    if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: 'Không xử lý được nút này.', ephemeral: true }).catch(() => null);
-    }
-  }
+// Register FIRST and keep the confirm path as lean as possible.
+client.on('interactionCreate', (interaction) => {
+  // Do not await heavy work before scheduling confirm handler — ack happens inside.
+  Promise.resolve()
+    .then(async () => {
+      if (await handleAssistantConfirmationButton(interaction)) return;
+      try {
+        const handled = await handlePanelButtonInteraction(interaction);
+        if (!handled && interaction.isButton?.() && interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'Nút này không còn được hỗ trợ.', ephemeral: true }).catch(() => null);
+        }
+      } catch (error) {
+        console.error('[INTERACTION] panel/other failed:', error);
+        if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'Không xử lý được nút này.', ephemeral: true }).catch(() => null);
+        }
+      }
+    })
+    .catch(error => console.error('[INTERACTION] unhandled:', error));
 });
 
 // ── 2. Event: Message Created (Detect triggers like "đã giải quyết" or "/done", or tag bot for AI) ──
@@ -346,24 +351,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
   try {
     if (user.bot) return;
 
+    // Assistant critical-action confirm (✅ / ❌) — check before Q&A solved logic.
+    if (await handleConfirmReaction(reaction, user)) return;
+
     console.log(`[REACTION DEBUG] User ${user.tag} reacted with ${reaction.emoji.name} on message ${reaction.message.id}`);
 
-    // Fetch partials if needed
     if (reaction.partial) await reaction.fetch();
     if (reaction.message.partial) await reaction.message.fetch();
 
     const message = reaction.message;
     const channel = message.channel;
 
-    // Check if it is a thread under a Q&A forum channel
     if (!channel.isThread() || !channel.parentId || !QA_CHANNEL_IDS.includes(channel.parentId)) return;
 
-    // Detect checkmark reaction
     if (reaction.emoji.name === '✅') {
       const threadOwnerId = channel.ownerId;
       const isOwner = user.id === threadOwnerId;
-      
-      // Fetch member to check permissions
       const member = await message.guild.members.fetch(user.id);
       const isMod = member.permissions.has('ManageThreads') || member.permissions.has('Administrator');
 

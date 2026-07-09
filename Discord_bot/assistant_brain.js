@@ -17,6 +17,7 @@ const {
   isConfirmationMessage,
   truncateDiscordContent,
 } = require('./assistant_confirmations.js');
+const { attachConfirmReactions } = require('./assistant_confirm_handler.js');
 const { auditAssistantEvent, describeAction } = require('./assistant_audit.js');
 
 const ASSISTANT_SYSTEM_PROMPT = `
@@ -435,11 +436,16 @@ async function handleAssistantMessage(message, cleanContent) {
 
     const cleanReply = stripConfirmNagsFromReply(decision.reply);
     const seconds = Math.round(pending.ttlMs / 1000);
+    // Primary: react ✅/❌ (gateway-stable). Buttons kept as secondary.
     const finalResponse = [
       cleanReply,
-      '**Cần xác nhận 1 lần** — bấm nút bên dưới để chạy ngay:',
+      '**Cần xác nhận 1 lần:**',
       formatActionPreview(actions),
-      `⏱ Hết hạn sau ${seconds}s · Chỉ bạn bấm được.`,
+      [
+        '👉 **Cách chắc chắn nhất:** bấm reaction **✅** = xác nhận · **❌** = hủy',
+        'Cũng có thể bấm nút bên dưới, hoặc gõ `xác nhận` / `hủy`.',
+        `⏱ Hết hạn sau ${seconds}s · Chỉ bạn được xác nhận.`,
+      ].join('\n'),
     ].filter(Boolean).join('\n\n').trim();
 
     await appendConversationTurn(context, {
@@ -451,6 +457,8 @@ async function handleAssistantMessage(message, cleanContent) {
     });
     if (confirmMsg?.id) {
       pending.confirmMessageId = confirmMsg.id;
+      // Reactions are the reliable confirm path for Discord gateway bots.
+      await attachConfirmReactions(confirmMsg);
     }
     scheduleAutoMemory({
       context,

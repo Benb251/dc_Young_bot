@@ -243,6 +243,10 @@ async function main() {
   if (!confirmations.getPendingConfirmationForUser(context.userId)) {
     throw new Error('pending for user lookup failed');
   }
+  pending.confirmMessageId = 'msg-confirm-1';
+  if (confirmations.getPendingByConfirmMessageId('msg-confirm-1')?.token !== pending.token) {
+    throw new Error('pending by confirm message id failed');
+  }
   if (!confirmations.consumePendingConfirmation({ ...context, channelId: 'other-channel' })?.actions?.length) {
     throw new Error('confirmation consume flexible failed');
   }
