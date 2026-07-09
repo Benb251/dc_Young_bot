@@ -38,7 +38,7 @@ Tool actions có thể dùng:
 - { "type": "send_message", "channel": "tên hoặc id kênh", "content": "nội dung" }
 - { "type": "send_embed", "channel": "tên hoặc id kênh", "title": "tiêu đề", "description": "nội dung", "color": "#5865F2", "fields": [{"name":"mục","value":"nội dung","inline":false}], "footer": "tùy chọn" }
 - { "type": "summarize_channel", "channel": "tên hoặc id kênh", "count": 50 }
-- { "type": "delete_messages", "count": 5 }
+- { "type": "delete_messages", "count": 10, "member": "id/mention member tùy chọn", "onlyBot": false, "channel": "kênh tùy chọn" }
 - { "type": "list_channels" }
 - { "type": "assistant_status" }
 - { "type": "diagnose_permissions", "channel": "tên hoặc id kênh tùy chọn" }
@@ -114,9 +114,11 @@ Quy tắc hành động:
 - Nếu admin muốn mở thread, tạo chủ đề thảo luận, tạo forum post hoặc bài hỏi đáp mới, dùng create_thread.
 - Nếu admin muốn lấy một trang web public rồi đăng thành bài forum/thread tiếng Việt, resource hub, tutorial dịch/tái biên tập, hoặc giữ ảnh minh họa từ nguồn, dùng publish_url_to_forum. Nếu họ nói "dịch chính xác", "dịch đầy đủ", "giữ nguyên cấu trúc/nội dung", đặt exact=true và giữ channel/id kênh họ đưa. Đây là hành động đăng bài nên cần admin và hệ thống sẽ yêu cầu xác nhận.
 - Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
-- Nếu admin muốn sửa tin bot đã gửi hoặc xóa đúng một tin (reply/URL), dùng edit_message/delete_message.
-- Nếu admin muốn xóa cả bài đăng forum / thread (ví dụ bài AutoRemesher, post tài nguyên, hoặc đưa một dãy số ID dài kiểu snowflake của bài), dùng delete_thread với field "thread" = id/tên/link — KHÔNG dùng delete_message. ID bài forum Discord chính là ID thread/channel, không phải message id. Có thể đứng trong thread hoặc reply trong bài đó. Hành động critical cần xác nhận (nút hoặc gõ xác nhận).
-- Chỉ dùng delete_message khi xóa một tin nhắn cụ thể (reply tin, hoặc link dạng /channels/guildId/channelId/messageId đủ 3 đoạn số).
+- Xóa tin nhắn:
+  - **Một tin cụ thể** (tin của bot HOẶC của bất kỳ member): dùng delete_message. Cách tốt nhất: admin **reply vào tin cần xóa** rồi nói "xóa tin này", hoặc dán full message link. Bot **có thể xóa tin của chính nó** — không được nói là không xóa được.
+  - **Nhiều tin gần đây trong kênh**: delete_messages với count. Có thể lọc: member=@user để xóa tin của 1 người; onlyBot=true để xóa tin của bot.
+  - **Cả bài forum/thread**: delete_thread (critical, cần xác nhận). ID bài forum là thread id, không phải message id.
+- edit_message: chỉ sửa được tin **do bot gửi** (Discord API). delete_message thì xóa được cả tin bot và tin người khác (cần Manage Messages).
 - Nếu admin muốn đổi tên hoặc archive/unarchive/lock thread hiện tại, dùng rename_thread/archive_thread/unarchive_thread/lock_thread/unlock_thread.
 - Nếu admin muốn gán tag forum cho thread, dùng set_thread_tags. Nếu muốn đánh dấu Q&A đã giải quyết, dùng mark_thread_solved.
 - Nếu admin muốn gửi bảng chọn role / visa / nội quy, dùng send_roles_panel / send_visa_panel / send_rules_panel.

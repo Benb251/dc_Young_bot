@@ -379,26 +379,30 @@ async function findMessageForAction(message, guild, args) {
     || args.id;
   const channelIdFromUrl = extractChannelIdFromMessageUrl(messageRef);
   // Discord URL /channels/guildId/channelOrThreadId/messageId
-  // If ref is only a bare snowflake, it may be a message id OR a thread id — caller handles thread fallback.
+  // Bare snowflake may be a message id OR a thread id — caller may fall back to thread.
   let channel = channelIdFromUrl
     ? await findChannel(guild, channelIdFromUrl)
     : args.channel || args.channel_name || args.channelId
       ? await findChannel(guild, args.channel || args.channel_name || args.channelId)
       : null;
 
+  // Prefer explicit id; otherwise if admin replied to a target message, use that reference.
   const messageId = extractMessageId(messageRef)
-    || args.id
-    || message.reference?.messageId;
+    || (args.id ? extractMessageId(args.id) : null)
+    || message.reference?.messageId
+    || null;
 
-  // Full message URL gives channel; bare id tries current channel then referenced channel.
+  if (!channel && message.reference?.messageId) {
+    // Reply context: target is usually in the same channel/thread as the command.
+    channel = message.channel;
+  }
   if (!channel) channel = message.channel;
   if (!channel?.messages || !messageId) return null;
 
   const direct = await channel.messages.fetch(messageId).catch(() => null);
   if (direct) return direct;
 
-  // If messageRef was a full URL, channel is already set. If bare id failed in current channel,
-  // try: id might be message inside a thread whose id was also provided separately.
+  // Try alternate channel/thread if provided.
   if (args.thread || args.threadId || args.channel) {
     const altChannel = await findChannel(guild, args.thread || args.threadId || args.channel);
     if (altChannel?.messages) {
@@ -406,7 +410,76 @@ async function findMessageForAction(message, guild, args) {
       if (alt) return alt;
     }
   }
+
+  // Last resort: if admin replied, fetch the referenced message object directly.
+  if (message.reference?.messageId === messageId && message.fetchReference) {
+    const referenced = await message.fetchReference().catch(() => null);
+    if (referenced) return referenced;
+  }
   return null;
+}
+
+/**
+ * Delete recent messages in a channel, optionally only from one member / only bot.
+ * Falls back to individual deletes when bulkDelete cannot remove older messages.
+ */
+async function deleteMessagesInChannel(channel, {
+  count = 10,
+  memberId = null,
+  onlyBot = false,
+  botUserId = null,
+  reason = 'Assistant purge',
+} = {}) {
+  if (!channel?.messages?.fetch) {
+    return { deleted: 0, error: 'Kênh không hỗ trợ đọc/xóa tin nhắn.' };
+  }
+  const limit = Math.min(Math.max(Number(count) || 10, 1), 100);
+  const fetched = await channel.messages.fetch({ limit: Math.min(Math.max(limit * 3, limit), 100) });
+  let candidates = [...fetched.values()];
+
+  if (onlyBot && botUserId) {
+    candidates = candidates.filter(msg => msg.author?.id === botUserId);
+  } else if (memberId) {
+    candidates = candidates.filter(msg => msg.author?.id === memberId);
+  }
+
+  candidates = candidates
+    .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
+    .slice(0, limit);
+
+  if (!candidates.length) {
+    return { deleted: 0, error: null, note: 'Không có tin phù hợp để xóa.' };
+  }
+
+  // bulkDelete only works for messages < 14 days and not all channel types the same way.
+  const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const bulkable = candidates.filter(msg => msg.createdTimestamp > twoWeeksAgo);
+  const oldOnes = candidates.filter(msg => msg.createdTimestamp <= twoWeeksAgo);
+
+  let deleted = 0;
+  if (bulkable.length >= 2 && channel.bulkDelete) {
+    const result = await channel.bulkDelete(bulkable, true).catch(() => null);
+    deleted += result?.size || 0;
+    // If bulkDelete failed silently, fall through individually for leftovers
+    if (!result) {
+      for (const msg of bulkable) {
+        const ok = await msg.delete().then(() => true).catch(() => false);
+        if (ok) deleted += 1;
+      }
+    }
+  } else {
+    for (const msg of bulkable) {
+      const ok = await msg.delete().then(() => true).catch(() => false);
+      if (ok) deleted += 1;
+    }
+  }
+
+  for (const msg of oldOnes) {
+    const ok = await msg.delete().then(() => true).catch(() => false);
+    if (ok) deleted += 1;
+  }
+
+  return { deleted, error: null, note: reason };
 }
 
 async function findRole(guild, roleNameOrId) {
@@ -1156,13 +1229,51 @@ async function executeAssistantActions({ message, actions = [], context }) {
           results.push(`Đã archive thread "${target.name}".`);
         }
       } else if (type === 'delete_messages') {
-        const count = Math.min(Math.max(Number(args.count) || 0, 1), 100);
-        if (!message.channel || !message.channel.bulkDelete) {
-          results.push('Kênh hiện tại không hỗ trợ xóa hàng loạt.');
+        const count = Math.min(Math.max(Number(args.count) || 10, 1), 100);
+        const channel = args.channel || args.channel_name || args.channelId
+          ? await findChannel(guild, args.channel || args.channel_name || args.channelId)
+          : message.channel;
+        if (!channel?.messages) {
+          results.push('Không tìm thấy kênh để xóa tin.');
           continue;
         }
-        await message.channel.bulkDelete(count, true);
-        results.push(`Đã xóa tối đa ${count} tin nhắn gần nhất trong kênh hiện tại.`);
+
+        const onlyBot = Boolean(args.onlyBot || args.botOnly || args.self
+          || /bot|chinh no|của bot|cua bot/i.test(String(args.filter || args.target || '')));
+        let memberId = null;
+        if (!onlyBot && (args.member || args.user || args.userId || args.author)) {
+          const member = await findMember(guild, args.member || args.user || args.userId || args.author);
+          memberId = member?.id || null;
+          if (!memberId) {
+            results.push('Không tìm thấy thành viên để xóa tin theo filter.');
+            continue;
+          }
+        }
+
+        const purge = await deleteMessagesInChannel(channel, {
+          count,
+          memberId,
+          onlyBot,
+          botUserId: message.client.user.id,
+          reason: `Assistant command by ${message.author.tag}`,
+        });
+        if (purge.error) {
+          results.push(purge.error);
+          continue;
+        }
+        if (!purge.deleted) {
+          results.push(onlyBot
+            ? `Không tìm thấy tin nào của bot trong #${channel.name} (trong phạm vi quét gần đây).`
+            : memberId
+              ? `Không tìm thấy tin gần đây của member đó trong #${channel.name}.`
+              : `Không xóa được tin nào trong #${channel.name}.`);
+          continue;
+        }
+        results.push(onlyBot
+          ? `Đã xóa ${purge.deleted} tin của bot trong #${channel.name}.`
+          : memberId
+            ? `Đã xóa ${purge.deleted} tin gần đây của <@${memberId}> trong #${channel.name}.`
+            : `Đã xóa ${purge.deleted} tin gần nhất trong #${channel.name}.`);
       } else if (type === 'create_category') {
         if (!guild) {
           results.push('Không thể kết nối tới server để tạo category.');
@@ -1429,13 +1540,21 @@ async function executeAssistantActions({ message, actions = [], context }) {
         });
         results.push(`Đã sửa tin nhắn ${targetMessage.id}.`);
       } else if (type === 'delete_message') {
+        // Supports: bot's own messages, any member's messages (needs ManageMessages),
+        // via reply / full message link / id+channel.
         const targetMessage = await findMessageForAction(message, guild, {
           ...args,
           messageId: args.messageId || args.message_id || args.id,
         });
         if (targetMessage) {
+          const authorTag = targetMessage.author?.tag || targetMessage.author?.id || 'unknown';
+          const isOwn = targetMessage.author?.id === message.client.user.id;
           await targetMessage.delete();
-          results.push(`Đã xóa tin nhắn ${targetMessage.id}.`);
+          results.push(
+            isOwn
+              ? `Đã xóa tin nhắn của bot (${targetMessage.id}).`
+              : `Đã xóa tin nhắn của ${authorTag} (${targetMessage.id}).`
+          );
           continue;
         }
 
@@ -1456,9 +1575,11 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
 
         results.push(
-          'Không tìm thấy tin nhắn hoặc bài forum với ID đó. '
-          + 'Hãy reply tin cần xóa, đưa link tin (`/channels/.../.../...`), '
-          + 'hoặc ID/link **thread/bài đăng** forum.'
+          'Không tìm thấy tin nhắn để xóa. '
+          + 'Cách chắc: **reply đúng tin cần xóa** rồi bảo xóa, '
+          + 'hoặc dán **link tin** dạng `/channels/server/kênh/messageId`. '
+          + 'Bot xóa được tin của chính nó và tin member (cần quyền Manage Messages). '
+          + 'Muốn xóa nhiều tin của 1 người: dùng delete_messages với member=... count=...'
         );
       } else if (type === 'delete_thread') {
         const thread = await resolveThreadForAction(message, guild, {
