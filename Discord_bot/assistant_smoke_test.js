@@ -214,6 +214,12 @@ async function main() {
   if (!pending || !confirmations.isConfirmationMessage('xác nhận')) {
     throw new Error('confirmation creation failed');
   }
+  if (!confirmations.isConfirmationMessage('Xác nhận.') || !confirmations.isConfirmationMessage('ok xác nhận')) {
+    throw new Error('confirmation phrase matching too strict');
+  }
+  if (!confirmations.isCancelMessage('hủy') || !confirmations.isCancelMessage('bo qua')) {
+    throw new Error('cancel phrase matching failed');
+  }
   if (!pending.token || pending.token.length !== 16) {
     throw new Error('confirmation token missing');
   }
@@ -227,8 +233,12 @@ async function main() {
   if (confirmations.getPendingConfirmationByToken(pending.token)?.token !== pending.token) {
     throw new Error('pending by token lookup failed');
   }
-  if (!confirmations.consumePendingConfirmation(context)?.actions?.length) {
-    throw new Error('confirmation consume failed');
+  // Flexible lookup by user even if channel key differs
+  if (!confirmations.getPendingConfirmationForUser(context.userId)) {
+    throw new Error('pending for user lookup failed');
+  }
+  if (!confirmations.consumePendingConfirmation({ ...context, channelId: 'other-channel' })?.actions?.length) {
+    throw new Error('confirmation consume flexible failed');
   }
   if (confirmations.getPendingConfirmation(context) || confirmations.getPendingConfirmationByToken(pending.token)) {
     throw new Error('confirmation cleanup failed');

@@ -101,6 +101,11 @@ client.once('ready', () => {
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
 const { handleAssistantMessage, handleAssistantConfirmationButton } = require('./assistant_brain.js');
+const {
+  getPendingConfirmationFlexible,
+  isCancelMessage,
+  isConfirmationMessage,
+} = require('./assistant_confirmations.js');
 const { handleGuildMemberAdd } = require('./assistant_onboarding.js');
 const { startReminderLoop } = require('./assistant_reminders.js');
 
@@ -292,14 +297,22 @@ client.on('messageCreate', async (message) => {
     }
 
     const channel = message.channel;
+    const strippedContent = client.user
+      ? message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim()
+      : message.content.trim();
+    const pendingContext = {
+      guildId: message.guild?.id || null,
+      channelId: message.channel?.id || null,
+      userId: message.author.id,
+    };
+    const isConfirmOrCancel = isConfirmationMessage(strippedContent) || isCancelMessage(strippedContent);
+    const hasPending = Boolean(getPendingConfirmationFlexible(pendingContext));
+    const mentionedBot = Boolean(client.user && message.mentions.has(client.user.id));
 
-    if (client.user && message.mentions.has(client.user.id)) {
-      const cleanContent = message.content
-        .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
-        .trim() || 'Chào bot!';
-
+    // 1) @bot normal chat  2) plain "xác nhận"/"hủy" while pending (no @ required)
+    if (mentionedBot || (isConfirmOrCancel && hasPending)) {
       await message.channel.sendTyping();
-      await handleAssistantMessage(message, cleanContent);
+      await handleAssistantMessage(message, strippedContent || 'Chào bot!');
       return;
     }
 

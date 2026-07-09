@@ -36,12 +36,30 @@ function cleanupExpired(now = Date.now()) {
   }
 }
 
+function indexPending(pending) {
+  pendingConfirmations.set(pending.key, pending);
+  if (pending.token) pendingByToken.set(pending.token, pending);
+}
+
+function unindexPending(pending) {
+  if (!pending) return;
+  pendingConfirmations.delete(pending.key);
+  if (pending.token) pendingByToken.delete(pending.token);
+}
+
 function createPendingConfirmation(context, payload) {
   cleanupExpired();
   const ttlMs = getTtlMs();
   const key = buildConfirmationKey(context);
   const previous = pendingConfirmations.get(key);
-  if (previous?.token) pendingByToken.delete(previous.token);
+  if (previous) unindexPending(previous);
+
+  // One pending per user at a time (avoids orphaned button tokens in other channels).
+  if (context.userId) {
+    for (const existing of [...pendingConfirmations.values()]) {
+      if (existing.userId === context.userId) unindexPending(existing);
+    }
+  }
 
   const token = crypto.randomBytes(8).toString('hex');
   const pending = {
@@ -54,9 +72,9 @@ function createPendingConfirmation(context, payload) {
     createdAt: Date.now(),
     expiresAt: Date.now() + ttlMs,
     ttlMs,
+    confirmMessageId: null,
   };
-  pendingConfirmations.set(key, pending);
-  pendingByToken.set(token, pending);
+  indexPending(pending);
   return pending;
 }
 
@@ -65,41 +83,50 @@ function getPendingConfirmation(context) {
   return pendingConfirmations.get(buildConfirmationKey(context)) || null;
 }
 
+function getPendingConfirmationForUser(userId) {
+  cleanupExpired();
+  if (!userId) return null;
+  for (const pending of pendingConfirmations.values()) {
+    if (pending.userId === userId) return pending;
+  }
+  return null;
+}
+
+function getPendingConfirmationFlexible(context) {
+  return getPendingConfirmation(context) || getPendingConfirmationForUser(context?.userId);
+}
+
 function getPendingConfirmationByToken(token) {
   cleanupExpired();
   if (!token) return null;
-  return pendingByToken.get(String(token)) || null;
+  return pendingByToken.get(String(token).toLowerCase()) || null;
 }
 
 function consumePendingConfirmation(context) {
-  const pending = getPendingConfirmation(context);
+  const pending = getPendingConfirmationFlexible(context);
   if (!pending) return null;
-  pendingConfirmations.delete(buildConfirmationKey(context));
-  if (pending.token) pendingByToken.delete(pending.token);
+  unindexPending(pending);
   return pending;
 }
 
 function consumePendingConfirmationByToken(token) {
   const pending = getPendingConfirmationByToken(token);
   if (!pending) return null;
-  pendingConfirmations.delete(pending.key);
-  pendingByToken.delete(pending.token);
+  unindexPending(pending);
   return pending;
 }
 
 function clearPendingConfirmation(context) {
-  const pending = getPendingConfirmation(context);
+  const pending = getPendingConfirmationFlexible(context);
   if (!pending) return false;
-  pendingConfirmations.delete(buildConfirmationKey(context));
-  if (pending.token) pendingByToken.delete(pending.token);
+  unindexPending(pending);
   return true;
 }
 
 function clearPendingConfirmationByToken(token) {
   const pending = getPendingConfirmationByToken(token);
   if (!pending) return false;
-  pendingConfirmations.delete(pending.key);
-  pendingByToken.delete(pending.token);
+  unindexPending(pending);
   return true;
 }
 
@@ -108,23 +135,42 @@ function normalizeConfirmationText(content) {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isConfirmationMessage(content) {
   const normalized = normalizeConfirmationText(content);
-  return ['xac nhan', 'dong y', 'confirm', 'yes', 'ok', 'oke'].includes(normalized);
+  if (!normalized) return false;
+  if (['xac nhan', 'dong y', 'confirm', 'yes', 'ok', 'oke', 'y', 'yea', 'yeah'].includes(normalized)) {
+    return true;
+  }
+  // Allow short phrases like "ok xac nhan", "xac nhan nhe"
+  if (/^(ok|oke|yes|y|vangi|vang)?\s*xac nhan\b/.test(normalized)) return true;
+  if (/^dong y\b/.test(normalized)) return true;
+  if (/^confirm\b/.test(normalized)) return true;
+  return false;
 }
 
 function isCancelMessage(content) {
   const normalized = normalizeConfirmationText(content);
-  return ['huy', 'cancel', 'khong', 'no'].includes(normalized);
+  if (!normalized) return false;
+  if (['huy', 'cancel', 'khong', 'no', 'n', 'stop', 'bo qua'].includes(normalized)) {
+    return true;
+  }
+  if (/^(ok|oke)?\s*huy\b/.test(normalized)) return true;
+  if (/^cancel\b/.test(normalized)) return true;
+  if (/^bo qua\b/.test(normalized)) return true;
+  return false;
 }
 
 function parseConfirmButtonId(customId) {
   const raw = String(customId || '');
   // assistant_confirm:accept:<token> | assistant_confirm:cancel:<token>
-  const match = raw.match(new RegExp(`^${CONFIRM_CUSTOM_PREFIX}:(accept|cancel):([a-f0-9]{16})$`, 'i'));
+  // ignore trailing :done on disabled buttons
+  const match = raw.match(new RegExp(`^${CONFIRM_CUSTOM_PREFIX}:(accept|cancel):([a-f0-9]{16})(?::done)?$`, 'i'));
   if (!match) return null;
   return { decision: match[1].toLowerCase(), token: match[2].toLowerCase() };
 }
@@ -152,7 +198,7 @@ function buildConfirmationComponents(token) {
 }
 
 function disabledConfirmationComponents(token, chosen = null) {
-  const safeToken = String(token || '').slice(0, 16);
+  const safeToken = String(token || '0000000000000000').slice(0, 16);
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -171,6 +217,12 @@ function disabledConfirmationComponents(token, chosen = null) {
   ];
 }
 
+function truncateDiscordContent(text, max = 2000) {
+  const value = String(text || '');
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 3)}...`;
+}
+
 module.exports = {
   CONFIRM_CUSTOM_PREFIX,
   buildConfirmationComponents,
@@ -183,8 +235,11 @@ module.exports = {
   disabledConfirmationComponents,
   getPendingConfirmation,
   getPendingConfirmationByToken,
+  getPendingConfirmationFlexible,
+  getPendingConfirmationForUser,
   isCancelMessage,
   isConfirmButtonId,
   isConfirmationMessage,
   parseConfirmButtonId,
+  truncateDiscordContent,
 };
