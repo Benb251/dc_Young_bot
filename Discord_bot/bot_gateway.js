@@ -100,7 +100,7 @@ client.once('ready', () => {
 
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
-const { handleAssistantMessage } = require('./assistant_brain.js');
+const { handleAssistantMessage, handleAssistantConfirmationButton } = require('./assistant_brain.js');
 const { handleGuildMemberAdd } = require('./assistant_onboarding.js');
 const { startReminderLoop } = require('./assistant_reminders.js');
 
@@ -260,12 +260,13 @@ async function markThreadAsSolved(thread, triggerUser) {
 
 client.on('interactionCreate', async (interaction) => {
   try {
+    if (await handleAssistantConfirmationButton(interaction)) return;
     const handled = await handlePanelButtonInteraction(interaction);
     if (!handled && interaction.isButton?.()) {
       // Unknown buttons ignored
     }
   } catch (error) {
-    console.error('[INTERACTION] panel button failed:', error);
+    console.error('[INTERACTION] button failed:', error);
     if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: 'Không xử lý được nút này.', ephemeral: true }).catch(() => null);
     }

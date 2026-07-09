@@ -206,11 +206,32 @@ async function main() {
   if (!pending || !confirmations.isConfirmationMessage('xác nhận')) {
     throw new Error('confirmation creation failed');
   }
+  if (!pending.token || pending.token.length !== 16) {
+    throw new Error('confirmation token missing');
+  }
+  if (!confirmations.parseConfirmButtonId(`assistant_confirm:accept:${pending.token}`)) {
+    throw new Error('confirm button id parse failed');
+  }
+  const components = confirmations.buildConfirmationComponents(pending.token);
+  if (!components?.length || !components[0].components?.length) {
+    throw new Error('confirmation buttons missing');
+  }
+  if (confirmations.getPendingConfirmationByToken(pending.token)?.token !== pending.token) {
+    throw new Error('pending by token lookup failed');
+  }
   if (!confirmations.consumePendingConfirmation(context)?.actions?.length) {
     throw new Error('confirmation consume failed');
   }
-  if (confirmations.getPendingConfirmation(context)) {
+  if (confirmations.getPendingConfirmation(context) || confirmations.getPendingConfirmationByToken(pending.token)) {
     throw new Error('confirmation cleanup failed');
+  }
+
+  const pendingBtn = confirmations.createPendingConfirmation(context, {
+    actions: [{ type: 'delete_thread', thread: 'demo' }],
+  });
+  const byToken = confirmations.consumePendingConfirmationByToken(pendingBtn.token);
+  if (!byToken || byToken.actions[0].type !== 'delete_thread') {
+    throw new Error('consume by token failed');
   }
 
   const candidates = autoMemory.parseMemoryCandidates(JSON.stringify({

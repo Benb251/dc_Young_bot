@@ -7,12 +7,18 @@ const {
 } = require('./assistant_tools.js');
 const { autoRememberFromTurn } = require('./assistant_auto_memory.js');
 const {
+  buildConfirmationComponents,
   clearPendingConfirmation,
+  clearPendingConfirmationByToken,
   consumePendingConfirmation,
+  consumePendingConfirmationByToken,
   createPendingConfirmation,
+  disabledConfirmationComponents,
   getPendingConfirmation,
+  getPendingConfirmationByToken,
   isCancelMessage,
   isConfirmationMessage,
+  parseConfirmButtonId,
 } = require('./assistant_confirmations.js');
 const { auditAssistantEvent, describeAction } = require('./assistant_audit.js');
 
@@ -189,7 +195,7 @@ ${cleanContent}
 `.trim();
 }
 
-async function splitAndReply(message, text) {
+async function splitAndReply(message, text, options = {}) {
   const chunks = [];
   const normalized = String(text || '').trim() || 'Mình chưa có phản hồi phù hợp.';
   let remaining = normalized;
@@ -200,13 +206,34 @@ async function splitAndReply(message, text) {
   }
   chunks.push(remaining);
 
+  let firstMessage = null;
   for (let i = 0; i < chunks.length; i += 1) {
-    if (i === 0) {
-      await message.reply(chunks[i]);
-    } else {
-      await message.channel.send(chunks[i]);
+    const payload = { content: chunks[i] };
+    // Attach buttons only on the last chunk so the prompt + buttons stay together.
+    if (options.components && i === chunks.length - 1) {
+      payload.components = options.components;
     }
+    const sent = i === 0
+      ? await message.reply(payload)
+      : await message.channel.send(payload);
+    if (i === 0) firstMessage = sent;
   }
+  return firstMessage;
+}
+
+function buildInteractionProxyMessage(interaction) {
+  return {
+    id: interaction.message?.id,
+    author: interaction.user,
+    member: interaction.member,
+    channel: interaction.channel,
+    guild: interaction.guild,
+    client: interaction.client,
+    content: '',
+    url: interaction.message?.url,
+    mentions: { users: { first: () => null } },
+    reference: null,
+  };
 }
 
 function formatActionPreview(actions) {
@@ -309,12 +336,13 @@ async function handleAssistantMessage(message, cleanContent) {
     const pending = createPendingConfirmation(context, {
       actions,
       reply: decision.reply,
+      triggerMessageId: message.id,
     });
     await auditAssistantEvent({
       message,
       actions,
       status: 'pending_confirmation',
-      note: `Expires in ${Math.round(pending.ttlMs / 1000)} seconds.`,
+      note: `Expires in ${Math.round(pending.ttlMs / 1000)} seconds. token=${pending.token}`,
     });
 
     const responseParts = [];
@@ -322,7 +350,8 @@ async function handleAssistantMessage(message, cleanContent) {
     responseParts.push([
       'Mình đã chuẩn bị các hành động sau nhưng chưa chạy:',
       formatActionPreview(actions),
-      `Gõ "xác nhận" trong ${Math.round(pending.ttlMs / 1000)} giây để thực hiện, hoặc "hủy" để bỏ qua.`,
+      `Bấm **Xác nhận** hoặc **Hủy** bên dưới (trong ${Math.round(pending.ttlMs / 1000)} giây).`,
+      'Hoặc gõ `xác nhận` / `hủy` nếu không bấm được nút.',
     ].join('\n'));
 
     const finalResponse = responseParts.join('\n\n').trim();
@@ -330,7 +359,9 @@ async function handleAssistantMessage(message, cleanContent) {
       role: 'assistant',
       content: finalResponse,
     });
-    await splitAndReply(message, finalResponse);
+    await splitAndReply(message, finalResponse, {
+      components: buildConfirmationComponents(pending.token),
+    });
     scheduleAutoMemory({
       context,
       userText: cleanContent,
@@ -370,7 +401,112 @@ async function handleAssistantMessage(message, cleanContent) {
   });
 }
 
+/**
+ * Handle confirmation / cancel buttons under pending assistant actions.
+ * @returns {Promise<boolean>} true if this interaction was for assistant confirm
+ */
+async function handleAssistantConfirmationButton(interaction) {
+  if (!interaction.isButton?.()) return false;
+  const parsed = parseConfirmButtonId(interaction.customId);
+  if (!parsed) return false;
+
+  const { decision, token } = parsed;
+  const livePending = getPendingConfirmationByToken(token);
+
+  if (!livePending) {
+    await interaction.update({
+      content: `${interaction.message?.content || ''}\n\n⏱️ Yêu cầu xác nhận đã hết hạn hoặc đã xử lý.`,
+      components: disabledConfirmationComponents(token),
+    }).catch(async () => {
+      await interaction.reply({
+        content: '⏱️ Yêu cầu xác nhận đã hết hạn hoặc đã xử lý.',
+        ephemeral: true,
+      }).catch(() => null);
+    });
+    return true;
+  }
+
+  if (interaction.user.id !== livePending.userId) {
+    await interaction.reply({
+      content: 'Chỉ người yêu cầu hành động mới được bấm xác nhận/hủy.',
+      ephemeral: true,
+    }).catch(() => null);
+    return true;
+  }
+
+  const proxyMessage = buildInteractionProxyMessage(interaction);
+  const context = {
+    guildId: livePending.guildId || interaction.guildId || null,
+    channelId: livePending.channelId || interaction.channelId || null,
+    userId: livePending.userId,
+  };
+
+  if (decision === 'cancel') {
+    clearPendingConfirmationByToken(token);
+    await auditAssistantEvent({
+      message: proxyMessage,
+      actions: livePending.actions,
+      status: 'cancelled',
+      note: 'User cancelled via button.',
+    });
+    const cancelText = 'Đã hủy yêu cầu đang chờ xác nhận.';
+    await appendConversationTurn(context, { role: 'assistant', content: cancelText });
+    await interaction.update({
+      content: `${interaction.message?.content || ''}\n\n❌ ${cancelText}`,
+      components: disabledConfirmationComponents(token, 'cancel'),
+    }).catch(() => null);
+    return true;
+  }
+
+  const consumed = consumePendingConfirmationByToken(token);
+  if (!consumed) {
+    await interaction.reply({ content: 'Yêu cầu đã được xử lý hoặc hết hạn.', ephemeral: true }).catch(() => null);
+    return true;
+  }
+
+  await interaction.update({
+    content: `${interaction.message?.content || ''}\n\n⏳ Đang thực hiện sau khi xác nhận...`,
+    components: disabledConfirmationComponents(token, 'accept'),
+  }).catch(() => null);
+
+  const actionResults = await executeAssistantActions({
+    message: proxyMessage,
+    actions: consumed.actions,
+    context,
+  });
+  await auditAssistantEvent({
+    message: proxyMessage,
+    actions: consumed.actions,
+    actionResults,
+    status: 'executed_after_confirmation',
+    note: 'Confirmed via button.',
+  });
+
+  const finalResponse = actionResults.length
+    ? `Đã xác nhận và thực hiện.\n\nKết quả hành động:\n${actionResults.join('\n')}`
+    : 'Đã xác nhận, nhưng không có hành động nào để thực hiện.';
+  await appendConversationTurn(context, { role: 'assistant', content: finalResponse });
+
+  // Follow-up may exceed one message; send in chunks.
+  let remaining = finalResponse;
+  let first = true;
+  while (remaining.length > 0) {
+    const chunk = remaining.slice(0, 1900);
+    remaining = remaining.slice(1900);
+    if (first) {
+      await interaction.followUp({ content: chunk }).catch(async () => {
+        await interaction.channel?.send?.(chunk).catch(() => null);
+      });
+      first = false;
+    } else {
+      await interaction.channel?.send?.(chunk).catch(() => null);
+    }
+  }
+  return true;
+}
+
 module.exports = {
   extractJson,
+  handleAssistantConfirmationButton,
   handleAssistantMessage,
 };
