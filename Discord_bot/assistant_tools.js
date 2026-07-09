@@ -31,6 +31,7 @@ const ADMIN_ACTIONS = new Set([
   'delete_channel',
   'delete_message',
   'delete_messages',
+  'delete_thread',
   'diagnose_permissions',
   'clear_warning',
   'dm_member',
@@ -118,6 +119,7 @@ const ACTION_RISK = {
   create_text_channel: 'write',
   create_thread: 'write',
   delete_message: 'write',
+  delete_thread: 'critical',
   dm_member: 'write',
   edit_message: 'write',
   lock_channel: 'write',
@@ -150,12 +152,46 @@ const ACTION_RISK = {
   bulk_lock_channels: 'critical',
   delete_channel: 'critical',
   delete_messages: 'critical',
+  delete_thread: 'critical',
   edit_role: 'critical',
   kick_member: 'critical',
   publish_url_to_forum: 'critical',
   set_channel_permissions: 'critical',
   unban_member: 'critical',
 };
+
+async function resolveThreadForAction(message, guild, args = {}) {
+  const ref = args.thread || args.threadId || args.thread_id || args.name || args.post || args.channel;
+  if (ref) {
+    const found = await findChannel(guild, ref);
+    if (found?.isThread?.()) return found;
+    // Message/thread URL: /channels/guild/threadId or /channels/guild/threadId/messageId
+    const urlMatch = String(ref).match(/\/channels\/\d+\/(\d+)(?:\/\d+)?/);
+    if (urlMatch) {
+      const byId = await guild.channels.fetch(urlMatch[1]).catch(() => null);
+      if (byId?.isThread?.()) return byId;
+    }
+    // Search active (+ recent archived) threads by title across guild
+    const wanted = normalizeChannelName(ref);
+    if (wanted && guild?.channels?.cache) {
+      const threadParents = guild.channels.cache.filter(channel => (
+        channel.type === ChannelType.GuildForum
+        || channel.type === ChannelType.GuildText
+        || channel.type === ChannelType.GuildAnnouncement
+      ));
+      for (const parent of threadParents.values()) {
+        const active = await parent.threads?.fetchActive?.().catch(() => null);
+        const matchActive = active?.threads?.find(thread => {
+          const n = normalizeChannelName(thread.name);
+          return n === wanted || n.includes(wanted) || wanted.includes(n);
+        });
+        if (matchActive) return matchActive;
+      }
+    }
+  }
+  if (message.channel?.isThread?.()) return message.channel;
+  return null;
+}
 
 function getActionType(action) {
   return action?.type || action?.action || '';
@@ -1043,9 +1079,11 @@ async function executeAssistantActions({ message, actions = [], context }) {
           results.push(`Đã gỡ ghim tin nhắn: ${targetMessage.url}`);
         }
       } else if (type === 'rename_thread' || type === 'archive_thread') {
-        const target = args.thread || args.threadId || args.channel || args.channelId
-          ? await findChannel(guild, args.thread || args.threadId || args.channel || args.channelId)
-          : message.channel;
+        const target = type === 'rename_thread'
+          ? await resolveThreadForAction(message, guild, {
+            thread: args.thread || args.threadId || args.channel || args.channelId,
+          })
+          : await resolveThreadForAction(message, guild, args);
         if (!target?.isThread?.()) {
           results.push('Không tìm thấy thread cần xử lý.');
           continue;
@@ -1338,11 +1376,22 @@ async function executeAssistantActions({ message, actions = [], context }) {
       } else if (type === 'delete_message') {
         const targetMessage = await findMessageForAction(message, guild, args);
         if (!targetMessage) {
-          results.push('Không tìm thấy tin nhắn để xóa.');
+          results.push('Không tìm thấy tin nhắn để xóa. Hãy reply tin đó, hoặc đưa message link/ID. (Xóa cả bài forum thì dùng delete_thread.)');
           continue;
         }
         await targetMessage.delete();
         results.push(`Đã xóa tin nhắn ${targetMessage.id}.`);
+      } else if (type === 'delete_thread') {
+        const thread = await resolveThreadForAction(message, guild, args);
+        if (!thread?.isThread?.()) {
+          results.push('Không tìm thấy bài đăng/thread để xóa. Hãy đứng trong thread, reply, đưa link thread, hoặc tên/id thread.');
+          continue;
+        }
+        const label = thread.name;
+        const id = thread.id;
+        const parentLabel = thread.parent?.name ? `#${thread.parent.name}` : 'forum/channel';
+        await thread.delete(`Assistant delete_thread by ${message.author.tag}`);
+        results.push(`Đã xóa bài đăng/thread "${label}" (${id}) trong ${parentLabel}.`);
       } else if (type === 'set_thread_tags') {
         let thread = message.channel?.isThread?.() ? message.channel : null;
         if (args.thread || args.threadId || args.channel) {

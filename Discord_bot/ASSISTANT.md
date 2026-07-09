@@ -147,7 +147,8 @@ See also `TOOL_GAP_CHECKLIST.md` for remaining gaps vs one-shot setup scripts.
 - `bulk_lock_channels`: lock many channels in one confirmable action (**critical**).
 - `pin_message` / `unpin_message`: pin or unpin a referenced message, message URL, or message ID.
 - `edit_message`: edit a bot-authored message by reply/URL/id.
-- `delete_message`: delete one message by reply/URL/id.
+- `delete_message`: delete one message by reply/URL/id (not a whole forum post).
+- `delete_thread`: delete a forum post / thread by name, link, id, or current thread (**critical**, requires `xác nhận`). Needs Manage Threads / Manage Channels as appropriate.
 - `rename_thread` / `archive_thread` / `unarchive_thread` / `lock_thread` / `unlock_thread`: manage threads.
 - `set_thread_tags`: apply forum tags to a thread.
 - `list_threads`: list active/archived threads in a channel.

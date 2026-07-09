@@ -69,6 +69,7 @@ Tool actions có thể dùng:
 - { "type": "unpin_message", "messageId": "id/url tùy chọn", "channel": "kênh tùy chọn" }
 - { "type": "edit_message", "messageId": "id/url hoặc reply", "content": "nội dung mới", "title": "nếu embed", "description": "nếu embed" }
 - { "type": "delete_message", "messageId": "id/url hoặc reply" }
+- { "type": "delete_thread", "thread": "id/tên/link bài forum hoặc thread" }
 - { "type": "rename_thread", "thread": "id/tên tùy chọn", "name": "tên mới" }
 - { "type": "archive_thread", "thread": "id/tên tùy chọn" }
 - { "type": "unarchive_thread", "thread": "id/tên tùy chọn" }
@@ -102,13 +103,14 @@ Tool actions có thể dùng:
 
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
-- Hệ thống có 3 tầng risk: safe (chạy ngay), write (chạy ngay trừ khi admin tắt auto-write), critical (luôn cần admin gõ "xác nhận"). Critical gồm: xóa kênh, ban/kick/unban, set_channel_permissions, edit_role, bulk_lock, delete_messages bulk, publish_url_to_forum.
+- Hệ thống có 3 tầng risk: safe (chạy ngay), write (chạy ngay trừ khi admin tắt auto-write), critical (luôn cần admin gõ "xác nhận"). Critical gồm: xóa kênh, xóa bài forum/thread (delete_thread), ban/kick/unban, set_channel_permissions, edit_role, bulk_lock, delete_messages bulk, publish_url_to_forum.
 - Nếu admin muốn tạo category/forum, di chuyển kênh, gán permission overwrite, sửa role, unban, gỡ timeout, sửa/xóa 1 tin, gán tag thread, list thread, mark solved, gửi panel roles/visa/rules — dùng đúng tool tương ứng ở trên.
 - Nếu admin muốn đăng thông báo đẹp, announcement, nội quy, update hoặc tin ghim dạng trình bày gọn, dùng send_embed thay vì send_message.
 - Nếu admin muốn mở thread, tạo chủ đề thảo luận, tạo forum post hoặc bài hỏi đáp mới, dùng create_thread.
 - Nếu admin muốn lấy một trang web public rồi đăng thành bài forum/thread tiếng Việt, resource hub, tutorial dịch/tái biên tập, hoặc giữ ảnh minh họa từ nguồn, dùng publish_url_to_forum. Nếu họ nói "dịch chính xác", "dịch đầy đủ", "giữ nguyên cấu trúc/nội dung", đặt exact=true và giữ channel/id kênh họ đưa. Đây là hành động đăng bài nên cần admin và hệ thống sẽ yêu cầu xác nhận.
 - Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
 - Nếu admin muốn sửa tin bot đã gửi hoặc xóa đúng một tin (reply/URL), dùng edit_message/delete_message.
+- Nếu admin muốn xóa cả bài đăng forum / thread (ví dụ bài AutoRemesher, post tài nguyên), dùng delete_thread — không dùng delete_message. Có thể chỉ định tên bài, link thread, hoặc đứng/reply trong thread đó. Hành động critical cần xác nhận.
 - Nếu admin muốn đổi tên hoặc archive/unarchive/lock thread hiện tại, dùng rename_thread/archive_thread/unarchive_thread/lock_thread/unlock_thread.
 - Nếu admin muốn gán tag forum cho thread, dùng set_thread_tags. Nếu muốn đánh dấu Q&A đã giải quyết, dùng mark_thread_solved.
 - Nếu admin muốn gửi bảng chọn role / visa / nội quy, dùng send_roles_panel / send_visa_panel / send_rules_panel.

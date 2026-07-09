@@ -89,6 +89,7 @@ async function main() {
     || getActionRisk({ type: 'send_message' }) !== 'write'
     || getActionRisk({ type: 'create_thread' }) !== 'write'
     || getActionRisk({ type: 'delete_channel' }) !== 'critical'
+    || getActionRisk({ type: 'delete_thread' }) !== 'critical'
     || getActionRisk({ type: 'ban_member' }) !== 'critical'
     || getActionRisk({ type: 'set_channel_permissions' }) !== 'critical'
     || getActionRisk({ type: 'edit_role' }) !== 'critical'
@@ -105,6 +106,7 @@ async function main() {
   if (
     !isDangerousAction({ type: 'ban_member' })
     || !isDangerousAction({ type: 'delete_channel' })
+    || !isDangerousAction({ type: 'delete_thread' })
     || !isDangerousAction({ type: 'publish_url_to_forum' })
     || !isDangerousAction({ type: 'delete_messages' })
     || isDangerousAction({ type: 'create_thread' })
