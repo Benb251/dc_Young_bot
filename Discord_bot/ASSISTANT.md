@@ -101,7 +101,7 @@ See also `TOOL_GAP_CHECKLIST.md` for remaining gaps vs one-shot setup scripts.
 - Admins can mention the bot in-server and ask it to perform supported admin actions.
 - The assistant asks the model for a JSON decision, executes allowed tools by risk tier, then reports the result.
 - AI calls use the primary model first, then fallback models if configured, with bounded timeout and retry handling.
-- Critical (and write when auto-write is off) actions are staged first. The bot posts **Xác nhận** / **Hủy** buttons; only the requesting admin can click. You can still type `xác nhận` / `hủy`. TTL defaults to 60s (`ASSISTANT_CONFIRM_TTL_MS`).
+- Critical (and write when auto-write is off) actions are staged **once**: a single message with **Xác nhận** / **Hủy** buttons (only the requesting admin). Typing `xác nhận` / `hủy` still works as fallback. No second confirm prompt from the AI. TTL defaults to 60s (`ASSISTANT_CONFIRM_TTL_MS`).
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
 - When enabled, onboarding can welcome new members, DM them, and assign one starter role through `guildMemberAdd`.

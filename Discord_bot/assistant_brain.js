@@ -110,7 +110,8 @@ Tool actions có thể dùng:
 
 Quy tắc hành động:
 - Chỉ tạo action quản trị khi người dùng yêu cầu rõ ràng. Nếu thiếu kênh/member/role/nội dung, hỏi lại trong reply và để actions rỗng.
-- Hệ thống có 3 tầng risk: safe (chạy ngay), write (chạy ngay trừ khi admin tắt auto-write), critical (luôn cần admin gõ "xác nhận"). Critical gồm: xóa kênh, xóa bài forum/thread (delete_thread), ban/kick/unban, set_channel_permissions, edit_role, bulk_lock, delete_messages bulk, publish_url_to_forum.
+- Hệ thống có 3 tầng risk: safe (chạy ngay), write (chạy ngay trừ khi admin tắt auto-write), critical (hệ thống tự hiện đúng 1 lần nút Xác nhận/Hủy — KHÔNG nhắc user gõ xác nhận trong reply). Critical gồm: xóa kênh, xóa bài forum/thread (delete_thread), ban/kick/unban, set_channel_permissions, edit_role, bulk_lock, delete_messages bulk, publish_url_to_forum.
+- Khi tạo action critical: reply ngắn gọn (đang chuẩn bị gì), không hỏi lại "bạn có chắc", không bảo "gõ xác nhận". Nút xác nhận do hệ thống gắn 1 lần.
 - Nếu admin muốn tạo category/forum, di chuyển kênh, gán permission overwrite, sửa role, unban, gỡ timeout, sửa/xóa 1 tin, gán tag thread, list thread, mark solved, gửi panel roles/visa/rules — dùng đúng tool tương ứng ở trên.
 - Nếu admin muốn đăng thông báo đẹp, announcement, nội quy, update hoặc tin ghim dạng trình bày gọn, dùng send_embed thay vì send_message.
 - Nếu admin muốn mở thread, tạo chủ đề thảo luận, tạo forum post hoặc bài hỏi đáp mới, dùng create_thread.
@@ -244,6 +245,68 @@ function formatActionPreview(actions) {
     .join('\n');
 }
 
+function stripConfirmNagsFromReply(text) {
+  return String(text || '')
+    .split('\n')
+    .filter(line => {
+      const n = line
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      if (!n.trim()) return true;
+      // Drop AI lines that re-ask for confirmation (system owns the one confirm UI).
+      if (n.includes('xac nhan') || n.includes('confirm')) return false;
+      if (n.includes('ban co chac') || n.includes('ban chac chan')) return false;
+      if (n.includes('neu dong y') || n.includes('tra loi xac nhan')) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Rewrite actions so forum-post snowflakes use delete_thread (critical, one button confirm)
+ * instead of delete_message (write, no confirm, then fails/re-asks).
+ */
+async function normalizeAssistantActions(message, actions) {
+  const list = Array.isArray(actions) ? actions : [];
+  const guild = message.guild
+    || await message.client.guilds.fetch(process.env.GUILD_ID).catch(() => null);
+  const normalized = [];
+
+  for (const action of list) {
+    const type = action?.type || action?.action;
+    const args = action?.args || action || {};
+    if (type !== 'delete_message') {
+      normalized.push(action);
+      continue;
+    }
+
+    const ref = args.messageUrl || args.url || args.messageId || args.message_id || args.id;
+    const fullMessageUrl = /\/channels\/\d+\/\d+\/\d+/.test(String(ref || ''));
+    if (fullMessageUrl || message.reference?.messageId) {
+      normalized.push(action);
+      continue;
+    }
+
+    const idMatch = String(ref || '').match(/\d{15,25}/);
+    if (idMatch && guild) {
+      const channel = await guild.channels.fetch(idMatch[0]).catch(() => null);
+      if (channel?.isThread?.()) {
+        normalized.push({
+          type: 'delete_thread',
+          thread: channel.id,
+          name: channel.name,
+        });
+        continue;
+      }
+    }
+    normalized.push(action);
+  }
+  return normalized;
+}
+
 function scheduleAutoMemory({ context, userText, assistantText, existingFacts }) {
   autoRememberFromTurn({ context, userText, assistantText, existingFacts })
     .then(savedFacts => {
@@ -260,12 +323,12 @@ async function disableConfirmMessage(message, pending, chosen) {
   if (!pending?.confirmMessageId || !message.channel?.messages?.fetch) return;
   const confirmMsg = await message.channel.messages.fetch(pending.confirmMessageId).catch(() => null);
   if (!confirmMsg || confirmMsg.author?.id !== message.client.user.id) return;
-  const suffix = chosen === 'accept'
-    ? '\n\n✅ Đã xác nhận (qua tin nhắn).'
-    : '\n\n❌ Đã hủy (qua tin nhắn).';
+  let suffix = '\n\n❌ Đã hủy.';
+  if (chosen === 'accept') suffix = '\n\n✅ Đã xác nhận.';
+  if (chosen === 'replaced') suffix = '\n\n↪️ Đã thay bằng yêu cầu mới (chỉ xác nhận 1 lần ở tin mới).';
   await confirmMsg.edit({
     content: truncateDiscordContent(`${confirmMsg.content || ''}${suffix}`),
-    components: disabledConfirmationComponents(pending.token, chosen),
+    components: disabledConfirmationComponents(pending.token, chosen === 'accept' ? 'accept' : 'cancel'),
   }).catch(() => null);
 }
 
@@ -364,10 +427,19 @@ async function handleAssistantMessage(message, cleanContent) {
     return;
   }
 
-  const actions = Array.isArray(decision.actions) ? decision.actions : [];
+  const actions = await normalizeAssistantActions(
+    message,
+    Array.isArray(decision.actions) ? decision.actions : []
+  );
   const hasDangerousAction = actions.some(isDangerousAction);
 
   if (hasDangerousAction) {
+    // Replace any previous pending for this user — only ONE confirm prompt with buttons.
+    if (pendingFlexible) {
+      await disableConfirmMessage(message, pendingFlexible, 'replaced');
+      clearPendingConfirmation(context);
+    }
+
     const pending = createPendingConfirmation(context, {
       actions,
       reply: decision.reply,
@@ -377,19 +449,18 @@ async function handleAssistantMessage(message, cleanContent) {
       message,
       actions,
       status: 'pending_confirmation',
-      note: `Expires in ${Math.round(pending.ttlMs / 1000)} seconds. token=${pending.token}`,
+      note: `Single-shot confirm. Expires in ${Math.round(pending.ttlMs / 1000)}s. token=${pending.token}`,
     });
 
-    const responseParts = [];
-    if (decision.reply) responseParts.push(String(decision.reply));
-    responseParts.push([
-      'Mình đã chuẩn bị các hành động sau nhưng chưa chạy:',
+    const cleanReply = stripConfirmNagsFromReply(decision.reply);
+    const seconds = Math.round(pending.ttlMs / 1000);
+    const finalResponse = [
+      cleanReply,
+      '**Cần xác nhận 1 lần** — bấm nút bên dưới để chạy ngay:',
       formatActionPreview(actions),
-      `Bấm **Xác nhận** hoặc **Hủy** bên dưới (trong ${Math.round(pending.ttlMs / 1000)} giây).`,
-      'Hoặc gõ `xác nhận` / `hủy` nếu không bấm được nút.',
-    ].join('\n'));
+      `⏱ Hết hạn sau ${seconds}s · Chỉ bạn bấm được.`,
+    ].filter(Boolean).join('\n\n').trim();
 
-    const finalResponse = responseParts.join('\n\n').trim();
     await appendConversationTurn(context, {
       role: 'assistant',
       content: finalResponse,
