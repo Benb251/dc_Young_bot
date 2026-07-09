@@ -141,6 +141,14 @@ async function main() {
     throw new Error('getMaxActions out of range');
   }
 
+  const ids = tools.collectIdCandidates(
+    'xóa bài 1524440890490224670',
+    'https://discord.com/channels/1/1524440890490224670/99'
+  );
+  if (!ids.includes('1524440890490224670') || !ids.includes('99')) {
+    throw new Error('collectIdCandidates failed');
+  }
+
   const permParse = tools.parsePermissionFlagList(['ViewChannel', 'SendMessages', 'NotARealFlag']);
   if (!permParse.flags.includes('ViewChannel') || !permParse.unknown.includes('NotARealFlag')) {
     throw new Error('parsePermissionFlagList failed');

@@ -160,9 +160,41 @@ const ACTION_RISK = {
   unban_member: 'critical',
 };
 
+function collectIdCandidates(...values) {
+  const ids = [];
+  for (const value of values) {
+    if (value == null || value === '') continue;
+    const text = String(value);
+    const fromUrl = text.match(/\/channels\/\d+\/(\d+)(?:\/(\d+))?/);
+    if (fromUrl) {
+      // thread/channel id then optional message id
+      ids.push(fromUrl[1]);
+      if (fromUrl[2]) ids.push(fromUrl[2]);
+    }
+    const bare = text.match(/\d{15,25}/g);
+    if (bare) ids.push(...bare);
+  }
+  return [...new Set(ids)];
+}
+
 async function resolveThreadForAction(message, guild, args = {}) {
-  const ref = args.thread || args.threadId || args.thread_id || args.name || args.post || args.channel;
-  if (ref) {
+  const ref = args.thread
+    || args.threadId
+    || args.thread_id
+    || args.name
+    || args.post
+    || args.channel
+    || args.id
+    || args.messageId
+    || args.message_id
+    || args.messageUrl
+    || args.url;
+  if (ref && guild) {
+    // Prefer snowflake fetch first — forum post IDs are thread channel IDs.
+    for (const id of collectIdCandidates(ref)) {
+      const byId = await guild.channels.fetch(id).catch(() => null);
+      if (byId?.isThread?.()) return byId;
+    }
     const found = await findChannel(guild, ref);
     if (found?.isThread?.()) return found;
     // Message/thread URL: /channels/guild/threadId or /channels/guild/threadId/messageId
@@ -340,18 +372,41 @@ function extractChannelIdFromMessageUrl(value) {
 }
 
 async function findMessageForAction(message, guild, args) {
-  const messageRef = args.messageUrl || args.url || args.messageId || args.message_id;
+  const messageRef = args.messageUrl
+    || args.url
+    || args.messageId
+    || args.message_id
+    || args.id;
   const channelIdFromUrl = extractChannelIdFromMessageUrl(messageRef);
-  const channel = channelIdFromUrl
+  // Discord URL /channels/guildId/channelOrThreadId/messageId
+  // If ref is only a bare snowflake, it may be a message id OR a thread id — caller handles thread fallback.
+  let channel = channelIdFromUrl
     ? await findChannel(guild, channelIdFromUrl)
     : args.channel || args.channel_name || args.channelId
       ? await findChannel(guild, args.channel || args.channel_name || args.channelId)
-      : message.channel;
+      : null;
+
   const messageId = extractMessageId(messageRef)
     || args.id
     || message.reference?.messageId;
+
+  // Full message URL gives channel; bare id tries current channel then referenced channel.
+  if (!channel) channel = message.channel;
   if (!channel?.messages || !messageId) return null;
-  return channel.messages.fetch(messageId).catch(() => null);
+
+  const direct = await channel.messages.fetch(messageId).catch(() => null);
+  if (direct) return direct;
+
+  // If messageRef was a full URL, channel is already set. If bare id failed in current channel,
+  // try: id might be message inside a thread whose id was also provided separately.
+  if (args.thread || args.threadId || args.channel) {
+    const altChannel = await findChannel(guild, args.thread || args.threadId || args.channel);
+    if (altChannel?.messages) {
+      const alt = await altChannel.messages.fetch(messageId).catch(() => null);
+      if (alt) return alt;
+    }
+  }
+  return null;
 }
 
 async function findRole(guild, roleNameOrId) {
@@ -1374,17 +1429,44 @@ async function executeAssistantActions({ message, actions = [], context }) {
         });
         results.push(`Đã sửa tin nhắn ${targetMessage.id}.`);
       } else if (type === 'delete_message') {
-        const targetMessage = await findMessageForAction(message, guild, args);
-        if (!targetMessage) {
-          results.push('Không tìm thấy tin nhắn để xóa. Hãy reply tin đó, hoặc đưa message link/ID. (Xóa cả bài forum thì dùng delete_thread.)');
+        const targetMessage = await findMessageForAction(message, guild, {
+          ...args,
+          messageId: args.messageId || args.message_id || args.id,
+        });
+        if (targetMessage) {
+          await targetMessage.delete();
+          results.push(`Đã xóa tin nhắn ${targetMessage.id}.`);
           continue;
         }
-        await targetMessage.delete();
-        results.push(`Đã xóa tin nhắn ${targetMessage.id}.`);
+
+        // Admin often pastes forum post / thread snowflake as "message id".
+        const thread = await resolveThreadForAction(message, guild, {
+          thread: args.messageId || args.message_id || args.id || args.url || args.messageUrl || args.thread,
+          name: args.name || args.title,
+        });
+        if (thread?.isThread?.()) {
+          const label = thread.name;
+          const id = thread.id;
+          const parentLabel = thread.parent?.name ? `#${thread.parent.name}` : 'forum/channel';
+          await thread.delete(`Assistant delete_message→thread by ${message.author.tag}`);
+          results.push(
+            `ID \`${id}\` là **bài đăng forum/thread** "${label}" (không phải tin nhắn lẻ). Đã xóa cả bài trong ${parentLabel}.`
+          );
+          continue;
+        }
+
+        results.push(
+          'Không tìm thấy tin nhắn hoặc bài forum với ID đó. '
+          + 'Hãy reply tin cần xóa, đưa link tin (`/channels/.../.../...`), '
+          + 'hoặc ID/link **thread/bài đăng** forum.'
+        );
       } else if (type === 'delete_thread') {
-        const thread = await resolveThreadForAction(message, guild, args);
+        const thread = await resolveThreadForAction(message, guild, {
+          ...args,
+          thread: args.thread || args.threadId || args.thread_id || args.id || args.messageId || args.message_id || args.url || args.messageUrl || args.name || args.post,
+        });
         if (!thread?.isThread?.()) {
-          results.push('Không tìm thấy bài đăng/thread để xóa. Hãy đứng trong thread, reply, đưa link thread, hoặc tên/id thread.');
+          results.push('Không tìm thấy bài đăng/thread để xóa. Hãy đứng trong thread, reply, đưa link thread, hoặc tên/id thread (snowflake bài forum).');
           continue;
         }
         const label = thread.name;
@@ -1631,6 +1713,7 @@ async function executeAssistantActions({ message, actions = [], context }) {
 
 module.exports = {
   ACTION_RISK,
+  collectIdCandidates,
   executeAssistantActions,
   findChannel,
   getActionRisk,
@@ -1642,4 +1725,5 @@ module.exports = {
   normalizeChannelName,
   parsePermissionFlagList,
   resolveForumTagIds,
+  resolveThreadForAction,
 };

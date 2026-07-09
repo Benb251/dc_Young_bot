@@ -116,7 +116,8 @@ Quy tắc hành động:
 - Nếu admin muốn lấy một trang web public rồi đăng thành bài forum/thread tiếng Việt, resource hub, tutorial dịch/tái biên tập, hoặc giữ ảnh minh họa từ nguồn, dùng publish_url_to_forum. Nếu họ nói "dịch chính xác", "dịch đầy đủ", "giữ nguyên cấu trúc/nội dung", đặt exact=true và giữ channel/id kênh họ đưa. Đây là hành động đăng bài nên cần admin và hệ thống sẽ yêu cầu xác nhận.
 - Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
 - Nếu admin muốn sửa tin bot đã gửi hoặc xóa đúng một tin (reply/URL), dùng edit_message/delete_message.
-- Nếu admin muốn xóa cả bài đăng forum / thread (ví dụ bài AutoRemesher, post tài nguyên), dùng delete_thread — không dùng delete_message. Có thể chỉ định tên bài, link thread, hoặc đứng/reply trong thread đó. Hành động critical cần xác nhận.
+- Nếu admin muốn xóa cả bài đăng forum / thread (ví dụ bài AutoRemesher, post tài nguyên, hoặc đưa một dãy số ID dài kiểu snowflake của bài), dùng delete_thread với field "thread" = id/tên/link — KHÔNG dùng delete_message. ID bài forum Discord chính là ID thread/channel, không phải message id. Có thể đứng trong thread hoặc reply trong bài đó. Hành động critical cần xác nhận (nút hoặc gõ xác nhận).
+- Chỉ dùng delete_message khi xóa một tin nhắn cụ thể (reply tin, hoặc link dạng /channels/guildId/channelId/messageId đủ 3 đoạn số).
 - Nếu admin muốn đổi tên hoặc archive/unarchive/lock thread hiện tại, dùng rename_thread/archive_thread/unarchive_thread/lock_thread/unlock_thread.
 - Nếu admin muốn gán tag forum cho thread, dùng set_thread_tags. Nếu muốn đánh dấu Q&A đã giải quyết, dùng mark_thread_solved.
 - Nếu admin muốn gửi bảng chọn role / visa / nội quy, dùng send_roles_panel / send_visa_panel / send_rules_panel.
