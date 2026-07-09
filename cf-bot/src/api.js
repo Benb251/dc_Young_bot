@@ -1,5 +1,5 @@
 import { ROLES, GUILD_ID, CHANNELS } from './config.js';
-import { discordRequest, updateDiscordMessage } from './discord.js';
+import { discordRequest, normalizeBotToken, updateDiscordMessage } from './discord.js';
 import { getBotConfig, getWelcomeGifs } from './storage.js';
 
 async function updateDiscordPanel(type, env, mergedConfig) {
@@ -57,6 +57,39 @@ export async function handleApiRequest(request, env) {
       status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
+  // Public health: does Worker DISCORD_TOKEN work? (no secret values returned)
+  if (request.method === 'GET' && url.pathname === '/api/discord-health') {
+    const token = normalizeBotToken(env.DISCORD_TOKEN);
+    if (!token) {
+      return json({ ok: false, reason: 'DISCORD_TOKEN missing on Worker' }, 200);
+    }
+    try {
+      const res = await fetch('https://discord.com/api/v10/users/@me', {
+        headers: { Authorization: `Bot ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        return json({
+          ok: false,
+          reason: 'token_rejected',
+          http: res.status,
+          hint: 'Re-run: node scripts/sync_discord_token.js && npm run deploy',
+          detail: body.slice(0, 120),
+        }, 200);
+      }
+      const me = await res.json();
+      return json({
+        ok: true,
+        botUsername: me.username,
+        botId: me.id,
+        visaRoleId: ROLES.VISA,
+        guildId: GUILD_ID,
+      }, 200);
+    } catch (e) {
+      return json({ ok: false, reason: e.message || String(e) }, 200);
+    }
+  }
 
   // Xác thực API Key (Secret)
   const authHeader = request.headers.get('X-Dashboard-Key');
