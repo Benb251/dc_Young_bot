@@ -104,15 +104,8 @@ const { handleAssistantMessage } = require('./assistant_brain.js');
 const { handleGuildMemberAdd } = require('./assistant_onboarding.js');
 const { startReminderLoop } = require('./assistant_reminders.js');
 
-// Helper to get status tag IDs from a forum channel
-function getStatusTagIds(parentChannel) {
-  const unsolvedTag = parentChannel.availableTags.find(t => t.name.includes('Chưa giải quyết'));
-  const solvedTag = parentChannel.availableTags.find(t => t.name.includes('Đã giải quyết'));
-  return {
-    unsolvedId: unsolvedTag ? unsolvedTag.id : null,
-    solvedId: solvedTag ? solvedTag.id : null
-  };
-}
+const { getStatusTagIds, markThreadSolved } = require('./assistant_qa_tags.js');
+const { handlePanelButtonInteraction } = require('./assistant_panels.js');
 
 // ── 1. Event: Thread (Post) Created ────────────────────────
 client.on('threadCreate', async (thread) => {
@@ -255,40 +248,29 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-// Helper to mark a thread as solved
+// Helper to mark a thread as solved (shared with assistant tools)
 async function markThreadAsSolved(thread, triggerUser) {
   try {
-    const parentChannel = await thread.guild.channels.fetch(thread.parentId);
-    if (!parentChannel || parentChannel.type !== ChannelType.GuildForum) return;
-
-    const { unsolvedId, solvedId } = getStatusTagIds(parentChannel);
-    if (!unsolvedId || !solvedId) return;
-
-    const currentTags = thread.appliedTags || [];
-    
-    // Check if solved is already applied or unsolved is already removed
-    if (currentTags.includes(solvedId) && !currentTags.includes(unsolvedId)) {
-      return; // Already solved
-    }
-
-    console.log(`✅ Post "${thread.name}" marked as solved by ${triggerUser.tag}`);
-
-    // Update tags
-    const newTags = currentTags
-      .filter(id => id !== unsolvedId) // Remove Unsolved
-      .concat(solvedId);               // Add Solved
-      
-    await thread.setAppliedTags([...new Set(newTags)]);
-
-    // Send confirmation message as embed
-    const solvedEmbed = new EmbedBuilder()
-      .setColor('#57F287') // Discord green
-      .setDescription(`✅ Bài đăng này đã được đánh dấu là **Đã giải quyết** bởi **${triggerUser.username}**. Cảm ơn mọi người!`);
-    await thread.send({ embeds: [solvedEmbed] });
+    const result = await markThreadSolved(thread, triggerUser);
+    if (result) console.log(`✅ ${result} (${triggerUser.tag})`);
   } catch (error) {
     console.error(`Failed to mark thread ${thread.id} as solved:`, error);
   }
 }
+
+client.on('interactionCreate', async (interaction) => {
+  try {
+    const handled = await handlePanelButtonInteraction(interaction);
+    if (!handled && interaction.isButton?.()) {
+      // Unknown buttons ignored
+    }
+  } catch (error) {
+    console.error('[INTERACTION] panel button failed:', error);
+    if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Không xử lý được nút này.', ephemeral: true }).catch(() => null);
+    }
+  }
+});
 
 // ── 2. Event: Message Created (Detect triggers like "đã giải quyết" or "/done", or tag bot for AI) ──
 client.on('messageCreate', async (message) => {

@@ -77,28 +77,94 @@ async function main() {
     throw new Error('memory upsert failed');
   }
 
+  const { getActionRisk, isAutoWriteEnabled } = tools;
+
+  // Default AUTO_WRITE is on: only critical actions require confirmation.
+  delete process.env.ASSISTANT_AUTO_WRITE;
+  if (!isAutoWriteEnabled()) {
+    throw new Error('AUTO_WRITE should default to enabled');
+  }
+  if (
+    getActionRisk({ type: 'inspect_server' }) !== 'safe'
+    || getActionRisk({ type: 'send_message' }) !== 'write'
+    || getActionRisk({ type: 'create_thread' }) !== 'write'
+    || getActionRisk({ type: 'delete_channel' }) !== 'critical'
+    || getActionRisk({ type: 'ban_member' }) !== 'critical'
+    || getActionRisk({ type: 'set_channel_permissions' }) !== 'critical'
+    || getActionRisk({ type: 'edit_role' }) !== 'critical'
+    || getActionRisk({ type: 'unban_member' }) !== 'critical'
+    || getActionRisk({ type: 'publish_url_to_forum' }) !== 'critical'
+    || getActionRisk({ type: 'bulk_lock_channels' }) !== 'critical'
+    || getActionRisk({ type: 'list_threads' }) !== 'safe'
+    || getActionRisk({ type: 'mark_thread_solved' }) !== 'write'
+    || getActionRisk({ type: 'unknown_future_tool' }) !== 'critical'
+  ) {
+    throw new Error('action risk classification failed');
+  }
+
   if (
     !isDangerousAction({ type: 'ban_member' })
-    || !isDangerousAction({ type: 'create_thread' })
-    || !isDangerousAction({ type: 'warn_member' })
-    || !isDangerousAction({ type: 'clear_warning' })
-    || !isDangerousAction({ type: 'send_embed' })
+    || !isDangerousAction({ type: 'delete_channel' })
     || !isDangerousAction({ type: 'publish_url_to_forum' })
-    || !isDangerousAction({ type: 'lock_channel' })
-    || !isDangerousAction({ type: 'pin_message' })
-    || !isDangerousAction({ type: 'rename_thread' })
-    || !isDangerousAction({ type: 'set_slowmode' })
+    || !isDangerousAction({ type: 'delete_messages' })
+    || isDangerousAction({ type: 'create_thread' })
+    || isDangerousAction({ type: 'send_embed' })
+    || isDangerousAction({ type: 'warn_member' })
+    || isDangerousAction({ type: 'pin_message' })
+    || isDangerousAction({ type: 'set_slowmode' })
     || isDangerousAction({ type: 'recall_memory' })
-    || isDangerousAction({ type: 'forget_memory' })
     || isDangerousAction({ type: 'diagnose_permissions' })
     || isDangerousAction({ type: 'inspect_server' })
     || isDangerousAction({ type: 'inspect_member' })
     || isDangerousAction({ type: 'search_messages' })
     || isDangerousAction({ type: 'schedule_reminder' })
-    || isDangerousAction({ type: 'learn_server' })
     || isDangerousAction({ type: 'fetch_url' })
+    || isDangerousAction({ type: 'list_threads' })
   ) {
-    throw new Error('dangerous action classification failed');
+    throw new Error('dangerous action classification failed (AUTO_WRITE on)');
+  }
+
+  process.env.ASSISTANT_AUTO_WRITE = 'false';
+  if (
+    !isDangerousAction({ type: 'send_message' })
+    || !isDangerousAction({ type: 'create_thread' })
+    || !isDangerousAction({ type: 'ban_member' })
+    || isDangerousAction({ type: 'inspect_server' })
+  ) {
+    throw new Error('dangerous action classification failed (AUTO_WRITE off)');
+  }
+  delete process.env.ASSISTANT_AUTO_WRITE;
+
+  if (tools.getMaxActions() < 1 || tools.getMaxActions() > 20) {
+    throw new Error('getMaxActions out of range');
+  }
+
+  const permParse = tools.parsePermissionFlagList(['ViewChannel', 'SendMessages', 'NotARealFlag']);
+  if (!permParse.flags.includes('ViewChannel') || !permParse.unknown.includes('NotARealFlag')) {
+    throw new Error('parsePermissionFlagList failed');
+  }
+
+  const panels = require('./assistant_panels.js');
+  const rolesPanel = panels.buildRolesPanelPayload();
+  if (!rolesPanel.embeds?.length || !rolesPanel.components?.length) {
+    throw new Error('roles panel payload incomplete');
+  }
+  if (!panels.buildVisaPanelPayload().components?.length) {
+    throw new Error('visa panel payload incomplete');
+  }
+  if (!panels.buildRulesPanelPayload({ description: 'Test rule' }).embeds?.length) {
+    throw new Error('rules panel payload incomplete');
+  }
+
+  const qa = require('./assistant_qa_tags.js');
+  const tags = qa.getStatusTagIds({
+    availableTags: [
+      { id: 'u1', name: 'Chưa giải quyết' },
+      { id: 's1', name: 'Đã giải quyết' },
+    ],
+  });
+  if (tags.unsolvedId !== 'u1' || tags.solvedId !== 's1') {
+    throw new Error('getStatusTagIds failed');
   }
 
   const fakeChannel = { id: '1522895554735112332', name: '💎・▌tài・nguyên' };

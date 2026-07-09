@@ -13,43 +13,68 @@ const { createTask, listTasks, updateTaskStatus } = require('./assistant_tasks.j
 const { clearWarning, createWarning, listWarnings } = require('./assistant_warnings.js');
 const { analyzeServer, generateServerProfile } = require('./assistant_server_advisor.js');
 const { buildForumResourcePost, buildResourceMessageParts, summarizeUrl } = require('./assistant_web.js');
+const { buildRolesPanelPayload, buildVisaPanelPayload, buildRulesPanelPayload } = require('./assistant_panels.js');
+const { markThreadSolved, getStatusTagIds } = require('./assistant_qa_tags.js');
 
 const ADMIN_ACTIONS = new Set([
   'analyze_server',
   'assign_role',
   'assistant_status',
   'ban_member',
+  'bulk_lock_channels',
+  'create_category',
+  'create_forum_channel',
   'create_role',
   'create_task',
   'create_text_channel',
   'create_thread',
+  'delete_channel',
+  'delete_message',
   'delete_messages',
   'diagnose_permissions',
   'clear_warning',
+  'dm_member',
+  'edit_message',
+  'edit_role',
   'inspect_server',
   'inspect_member',
   'kick_member',
   'learn_server',
+  'list_bans',
   'list_channels',
   'list_tasks',
+  'list_threads',
   'list_warnings',
   'lock_channel',
+  'lock_thread',
   'archive_thread',
+  'mark_thread_solved',
+  'move_channel',
   'pin_message',
   'publish_url_to_forum',
   'remove_role',
+  'remove_timeout',
   'rename_channel',
   'rename_thread',
   'cancel_reminder',
   'search_messages',
   'send_embed',
   'send_message',
+  'send_roles_panel',
+  'send_rules_panel',
+  'send_visa_panel',
+  'set_channel_permissions',
   'set_channel_topic',
+  'set_nickname',
   'set_slowmode',
+  'set_thread_tags',
   'schedule_reminder',
   'summarize_channel',
   'timeout_member',
+  'unarchive_thread',
+  'unban_member',
   'unlock_channel',
+  'unlock_thread',
   'unpin_message',
   'warn_member',
   'complete_task',
@@ -57,38 +82,107 @@ const ADMIN_ACTIONS = new Set([
   'list_reminders',
 ]);
 
-const DANGEROUS_ACTIONS = new Set([
-  'assign_role',
-  'ban_member',
-  'create_role',
-  'create_text_channel',
-  'create_thread',
-  'delete_messages',
-  'clear_warning',
-  'kick_member',
-  'lock_channel',
-  'archive_thread',
-  'pin_message',
-  'publish_url_to_forum',
-  'remove_role',
-  'rename_channel',
-  'rename_thread',
-  'send_embed',
-  'send_message',
-  'set_channel_topic',
-  'set_slowmode',
-  'timeout_member',
-  'unlock_channel',
-  'unpin_message',
-  'warn_member',
-]);
+/** Risk tiers: safe | write | critical. Unknown types default to critical. */
+const ACTION_RISK = {
+  analyze_server: 'safe',
+  assistant_status: 'safe',
+  diagnose_permissions: 'safe',
+  fetch_url: 'safe',
+  forget_memory: 'write',
+  inspect_member: 'safe',
+  inspect_server: 'safe',
+  learn_server: 'write',
+  list_bans: 'safe',
+  list_channels: 'safe',
+  list_memory: 'safe',
+  list_reminders: 'safe',
+  list_tasks: 'safe',
+  list_threads: 'safe',
+  list_warnings: 'safe',
+  recall_memory: 'safe',
+  remember: 'write',
+  search_messages: 'safe',
+  summarize_channel: 'safe',
+  summarize_url: 'safe',
+
+  assign_role: 'write',
+  archive_thread: 'write',
+  cancel_reminder: 'write',
+  cancel_task: 'write',
+  clear_warning: 'write',
+  complete_task: 'write',
+  create_category: 'write',
+  create_forum_channel: 'write',
+  create_role: 'write',
+  create_task: 'write',
+  create_text_channel: 'write',
+  create_thread: 'write',
+  delete_message: 'write',
+  dm_member: 'write',
+  edit_message: 'write',
+  lock_channel: 'write',
+  lock_thread: 'write',
+  mark_thread_solved: 'write',
+  move_channel: 'write',
+  pin_message: 'write',
+  remove_role: 'write',
+  remove_timeout: 'write',
+  rename_channel: 'write',
+  rename_thread: 'write',
+  schedule_reminder: 'write',
+  send_embed: 'write',
+  send_message: 'write',
+  send_roles_panel: 'write',
+  send_rules_panel: 'write',
+  send_visa_panel: 'write',
+  set_channel_topic: 'write',
+  set_nickname: 'write',
+  set_slowmode: 'write',
+  set_thread_tags: 'write',
+  timeout_member: 'write',
+  unarchive_thread: 'write',
+  unlock_channel: 'write',
+  unlock_thread: 'write',
+  unpin_message: 'write',
+  warn_member: 'write',
+
+  ban_member: 'critical',
+  bulk_lock_channels: 'critical',
+  delete_channel: 'critical',
+  delete_messages: 'critical',
+  edit_role: 'critical',
+  kick_member: 'critical',
+  publish_url_to_forum: 'critical',
+  set_channel_permissions: 'critical',
+  unban_member: 'critical',
+};
 
 function getActionType(action) {
   return action?.type || action?.action || '';
 }
 
+function getActionRisk(action) {
+  const type = getActionType(action);
+  if (!type) return 'critical';
+  return ACTION_RISK[type] || 'critical';
+}
+
+function isAutoWriteEnabled() {
+  const raw = process.env.ASSISTANT_AUTO_WRITE;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return true;
+  return !['0', 'false', 'no', 'off'].includes(String(raw).trim().toLowerCase());
+}
+
+function getMaxActions() {
+  return Math.min(Math.max(Number(process.env.ASSISTANT_MAX_ACTIONS) || 10, 1), 20);
+}
+
+/** True when action must be staged for confirmation before execute. */
 function isDangerousAction(action) {
-  return DANGEROUS_ACTIONS.has(getActionType(action));
+  const risk = getActionRisk(action);
+  if (risk === 'critical') return true;
+  if (risk === 'write' && !isAutoWriteEnabled()) return true;
+  return false;
 }
 
 const PERMISSION_CHECKS = [
@@ -96,14 +190,39 @@ const PERMISSION_CHECKS = [
   ['SendMessages', PermissionsBitField.Flags.SendMessages],
   ['ReadMessageHistory', PermissionsBitField.Flags.ReadMessageHistory],
   ['UseExternalEmojis', PermissionsBitField.Flags.UseExternalEmojis],
+  ['AddReactions', PermissionsBitField.Flags.AddReactions],
   ['EmbedLinks', PermissionsBitField.Flags.EmbedLinks],
   ['AttachFiles', PermissionsBitField.Flags.AttachFiles],
   ['ManageMessages', PermissionsBitField.Flags.ManageMessages],
   ['ManageChannels', PermissionsBitField.Flags.ManageChannels],
   ['ManageRoles', PermissionsBitField.Flags.ManageRoles],
+  ['ManageThreads', PermissionsBitField.Flags.ManageThreads],
+  ['CreatePublicThreads', PermissionsBitField.Flags.CreatePublicThreads],
+  ['CreatePrivateThreads', PermissionsBitField.Flags.CreatePrivateThreads],
+  ['ManageNicknames', PermissionsBitField.Flags.ManageNicknames],
   ['KickMembers', PermissionsBitField.Flags.KickMembers],
   ['BanMembers', PermissionsBitField.Flags.BanMembers],
   ['ModerateMembers', PermissionsBitField.Flags.ModerateMembers],
+];
+
+const RECOMMENDED_PERMISSION_FLAGS = [
+  PermissionsBitField.Flags.ViewChannel,
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.ReadMessageHistory,
+  PermissionsBitField.Flags.EmbedLinks,
+  PermissionsBitField.Flags.AttachFiles,
+  PermissionsBitField.Flags.AddReactions,
+  PermissionsBitField.Flags.UseExternalEmojis,
+  PermissionsBitField.Flags.ManageMessages,
+  PermissionsBitField.Flags.ManageChannels,
+  PermissionsBitField.Flags.ManageRoles,
+  PermissionsBitField.Flags.ManageThreads,
+  PermissionsBitField.Flags.CreatePublicThreads,
+  PermissionsBitField.Flags.CreatePrivateThreads,
+  PermissionsBitField.Flags.ManageNicknames,
+  PermissionsBitField.Flags.KickMembers,
+  PermissionsBitField.Flags.BanMembers,
+  PermissionsBitField.Flags.ModerateMembers,
 ];
 
 function getMissingPermissions(permissions, checks = PERMISSION_CHECKS) {
@@ -493,19 +612,7 @@ async function diagnoseBotPermissions(message, args) {
   const unmanageableRoles = guild.roles.cache
     .filter(role => role.id !== guild.id && role.position >= botHighest.position)
     .size;
-  const recommendedPermissions = new PermissionsBitField([
-    PermissionsBitField.Flags.ViewChannel,
-    PermissionsBitField.Flags.SendMessages,
-    PermissionsBitField.Flags.ReadMessageHistory,
-    PermissionsBitField.Flags.EmbedLinks,
-    PermissionsBitField.Flags.AttachFiles,
-    PermissionsBitField.Flags.ManageMessages,
-    PermissionsBitField.Flags.ManageChannels,
-    PermissionsBitField.Flags.ManageRoles,
-    PermissionsBitField.Flags.KickMembers,
-    PermissionsBitField.Flags.BanMembers,
-    PermissionsBitField.Flags.ModerateMembers,
-  ]);
+  const recommendedPermissions = new PermissionsBitField(RECOMMENDED_PERMISSION_FLAGS);
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${message.client.user.id}&scope=bot%20applications.commands&permissions=${recommendedPermissions.bitfield.toString()}`;
 
   return [
@@ -517,9 +624,51 @@ async function diagnoseBotPermissions(message, args) {
     `- Kênh text bot thấy được: ${visibleTextChannels}/${textChannels.length}`,
     `- Role cao nhất của bot: ${botHighest.name} (quản lý được ${manageableRoles} role, chưa quản lý được ${unmanageableRoles} role ngang/cao hơn)`,
     blockedChannels.length ? `- Một số kênh còn thiếu quyền:\n${blockedChannels.join('\n')}` : '- Các kênh text đã kiểm tra không thấy thiếu quyền đọc/gửi cơ bản.',
-    `- Link mời lại với bộ quyền khuyến nghị: ${inviteUrl}`,
-    'Lưu ý: để gán/gỡ role, role của bot phải nằm cao hơn role mục tiêu trong Server Settings > Roles.',
+    `- Link mời lại với bộ quyền khuyến nghị (full assistant stack): ${inviteUrl}`,
+    '- Sau khi re-invite: kéo role bot lên cao hơn các role cần gán/sửa trong Server Settings > Roles.',
+    `- ASSISTANT_AUTO_WRITE=${isAutoWriteEnabled() ? 'on (write chạy ngay)' : 'off (write cần xác nhận)'} | max actions/lượt=${getMaxActions()}`,
   ].join('\n');
+}
+
+async function getBotMember(guild, clientUserId) {
+  return guild.members.me
+    || await guild.members.fetchMe().catch(() => null)
+    || (clientUserId ? await guild.members.fetch(clientUserId).catch(() => null) : null);
+}
+
+function assertBotCanManageRole(botMember, role) {
+  if (!botMember || !role) return 'Bot hoặc role không hợp lệ.';
+  if (role.managed) return `Role ${role.name} do integration quản lý, bot không sửa được.`;
+  if (role.id === role.guild?.id) return 'Không thể sửa role @everyone bằng edit_role; dùng set_channel_permissions hoặc set_everyone nếu cần.';
+  if (role.position >= botMember.roles.highest.position) {
+    return `Bot không quản lý được role ${role.name} (role bot phải cao hơn trong hierarchy).`;
+  }
+  return null;
+}
+
+function parsePermissionFlagList(list) {
+  const names = Array.isArray(list)
+    ? list
+    : String(list || '').split(/[,|\s]+/).map(item => item.trim()).filter(Boolean);
+  const flags = [];
+  const unknown = [];
+  for (const name of names) {
+    const key = name.replace(/[^a-zA-Z]/g, '');
+    if (PermissionsBitField.Flags[key] !== undefined) flags.push(key);
+    else if (name) unknown.push(name);
+  }
+  return { flags, unknown, bitfield: new PermissionsBitField(flags.map(key => PermissionsBitField.Flags[key])) };
+}
+
+async function resolvePermissionTarget(guild, args) {
+  const raw = args.target || args.role || args.member || args.user || args.userId || args.roleId || '@everyone';
+  const text = String(raw).trim().toLowerCase();
+  if (text === '@everyone' || text === 'everyone' || text === guild.id) {
+    return guild.roles.everyone;
+  }
+  const role = await findRole(guild, raw);
+  if (role) return role;
+  return findMember(guild, raw);
 }
 
 async function inspectServer(message, args) {
@@ -633,7 +782,7 @@ async function executeAssistantActions({ message, actions = [], context }) {
   const canAdmin = isAdminMessage(message);
   const guild = await resolveGuild(message);
 
-  for (const action of actions.slice(0, 6)) {
+  for (const action of actions.slice(0, getMaxActions())) {
     const type = action.type || action.action;
     const args = action.args || action;
 
@@ -921,11 +1070,132 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
         await message.channel.bulkDelete(count, true);
         results.push(`Đã xóa tối đa ${count} tin nhắn gần nhất trong kênh hiện tại.`);
+      } else if (type === 'create_category') {
+        if (!guild) {
+          results.push('Không thể kết nối tới server để tạo category.');
+          continue;
+        }
+        const name = String(args.name || args.category || '').trim().slice(0, 100);
+        if (!name) {
+          results.push('Thiếu tên category.');
+          continue;
+        }
+        const category = await guild.channels.create({
+          name,
+          type: ChannelType.GuildCategory,
+          reason: `Assistant command by ${message.author.tag}`,
+        });
+        results.push(`Đã tạo category ${category.name} (${category.id}).`);
+      } else if (type === 'move_channel') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId);
+        const parentRef = args.category || args.parent || args.parentId || args.parent_name;
+        if (!channel) {
+          results.push('Không tìm thấy kênh cần di chuyển.');
+          continue;
+        }
+        let parent = null;
+        if (parentRef && !['none', 'null', 'root', '0'].includes(String(parentRef).toLowerCase())) {
+          parent = await findChannel(guild, parentRef);
+          if (!parent || parent.type !== ChannelType.GuildCategory) {
+            results.push('Không tìm thấy category đích.');
+            continue;
+          }
+        }
+        await channel.setParent(parent?.id || null, {
+          lockPermissions: args.lockPermissions !== false,
+          reason: `Assistant command by ${message.author.tag}`,
+        });
+        results.push(parent
+          ? `Đã chuyển #${channel.name} vào category ${parent.name}.`
+          : `Đã đưa #${channel.name} ra khỏi category (root).`);
+      } else if (type === 'delete_channel') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId || args.name);
+        if (!channel) {
+          results.push('Không tìm thấy kênh/category cần xóa.');
+          continue;
+        }
+        if (channel.type === ChannelType.GuildCategory) {
+          const children = guild.channels.cache.filter(item => item.parentId === channel.id);
+          if (children.size > 0 && !args.force) {
+            results.push(`Category ${channel.name} còn ${children.size} kênh con. Dọn kênh con trước hoặc đặt force=true (vẫn không xóa hàng loạt con).`);
+            continue;
+          }
+        }
+        const label = channel.name;
+        const id = channel.id;
+        await channel.delete(`Assistant command by ${message.author.tag}`);
+        results.push(`Đã xóa kênh/category ${label} (${id}).`);
+      } else if (type === 'create_forum_channel') {
+        if (!guild) {
+          results.push('Không thể kết nối tới server để tạo forum.');
+          continue;
+        }
+        const name = normalizeChannelSlug(args.name || args.channel || '') || String(args.name || '').trim();
+        if (!name) {
+          results.push('Thiếu tên forum channel.');
+          continue;
+        }
+        let parent;
+        if (args.category || args.parent) {
+          parent = await findChannel(guild, args.category || args.parent);
+          if (parent && parent.type !== ChannelType.GuildCategory) parent = null;
+        }
+        const availableTags = Array.isArray(args.tags)
+          ? args.tags.map(tag => ({ name: String(tag).slice(0, 20) })).filter(tag => tag.name).slice(0, 20)
+          : [];
+        const forum = await guild.channels.create({
+          name,
+          type: ChannelType.GuildForum,
+          parent: parent?.id,
+          topic: args.topic ? String(args.topic).slice(0, 1024) : undefined,
+          availableTags: availableTags.length ? availableTags : undefined,
+          reason: `Assistant command by ${message.author.tag}`,
+        });
+        results.push(`Đã tạo forum #${forum.name} (${forum.id})${parent ? ` trong ${parent.name}` : ''}.`);
+      } else if (type === 'set_channel_permissions') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        if (!guild || !channel?.permissionOverwrites?.edit) {
+          results.push('Không tìm thấy kênh hỗ trợ permission overwrites.');
+          continue;
+        }
+        const target = await resolvePermissionTarget(guild, args);
+        if (!target) {
+          results.push('Không tìm thấy role/member target cho overwrite. Dùng @everyone, tên role, hoặc member.');
+          continue;
+        }
+        const allowParsed = parsePermissionFlagList(args.allow || args.allows || []);
+        const denyParsed = parsePermissionFlagList(args.deny || args.denies || []);
+        if (allowParsed.unknown.length || denyParsed.unknown.length) {
+          results.push(`Flag quyền không hợp lệ: ${[...allowParsed.unknown, ...denyParsed.unknown].join(', ')}. Dùng tên Discord.js như ViewChannel, SendMessages.`);
+          continue;
+        }
+        if (!allowParsed.flags.length && !denyParsed.flags.length && args.clear !== true) {
+          results.push('Cần allow[], deny[], hoặc clear=true.');
+          continue;
+        }
+        if (args.clear === true) {
+          await channel.permissionOverwrites.delete(target, `Assistant clear overwrite by ${message.author.tag}`);
+          results.push(`Đã xóa overwrite của ${target.name || target.displayName || target.id} trên #${channel.name}.`);
+        } else {
+          const overwrite = {};
+          for (const flag of allowParsed.flags) overwrite[flag] = true;
+          for (const flag of denyParsed.flags) overwrite[flag] = false;
+          await channel.permissionOverwrites.edit(target, overwrite, {
+            reason: `Assistant command by ${message.author.tag}`,
+          });
+          results.push(`Đã cập nhật overwrite cho ${target.name || target.displayName || target.id} trên #${channel.name}.`);
+        }
       } else if (type === 'assign_role' || type === 'remove_role') {
         const member = await findMember(guild, args.member || args.user || args.userId);
         const role = await findRole(guild, args.role || args.role_name || args.roleId);
         if (!member || !role) {
           results.push(`Không tìm thấy member hoặc role để ${type === 'assign_role' ? 'gán' : 'gỡ'}.`);
+          continue;
+        }
+        const botMember = await getBotMember(guild, message.client.user.id);
+        const hierarchyError = assertBotCanManageRole(botMember, role);
+        if (hierarchyError) {
+          results.push(hierarchyError);
           continue;
         }
         if (type === 'assign_role') {
@@ -935,6 +1205,37 @@ async function executeAssistantActions({ message, actions = [], context }) {
           await member.roles.remove(role, `Assistant command by ${message.author.tag}`);
           results.push(`Đã gỡ role ${role.name} khỏi ${member.displayName}.`);
         }
+      } else if (type === 'edit_role') {
+        const role = await findRole(guild, args.role || args.role_name || args.roleId || args.name);
+        if (!guild || !role) {
+          results.push('Không tìm thấy role để sửa.');
+          continue;
+        }
+        const botMember = await getBotMember(guild, message.client.user.id);
+        const hierarchyError = assertBotCanManageRole(botMember, role);
+        if (hierarchyError) {
+          results.push(hierarchyError);
+          continue;
+        }
+        const patch = {};
+        if (args.newName || args.name) patch.name = String(args.newName || args.name).slice(0, 100);
+        if (args.color) patch.color = args.color;
+        if (args.hoist !== undefined) patch.hoist = Boolean(args.hoist);
+        if (args.mentionable !== undefined) patch.mentionable = Boolean(args.mentionable);
+        if (args.permissions || args.permissionFlags) {
+          const parsed = parsePermissionFlagList(args.permissions || args.permissionFlags);
+          if (parsed.unknown.length) {
+            results.push(`Flag quyền role không hợp lệ: ${parsed.unknown.join(', ')}`);
+            continue;
+          }
+          patch.permissions = parsed.bitfield;
+        }
+        if (!Object.keys(patch).length) {
+          results.push('edit_role cần newName/color/hoist/mentionable/permissions.');
+          continue;
+        }
+        const updated = await role.edit({ ...patch, reason: `Assistant command by ${message.author.tag}` });
+        results.push(`Đã cập nhật role ${updated.name} (${updated.id}).`);
       } else if (type === 'create_role') {
         if (!guild) {
           results.push('Không thể kết nối tới server để tạo role.');
@@ -952,6 +1253,206 @@ async function executeAssistantActions({ message, actions = [], context }) {
           reason: `Assistant command by ${message.author.tag}`,
         });
         results.push(`Đã tạo role ${role.name}.`);
+      } else if (type === 'unban_member') {
+        if (!guild) {
+          results.push('Không thể unban ngoài ngữ cảnh server.');
+          continue;
+        }
+        const raw = String(args.member || args.user || args.userId || args.id || '').replace(/[<@!>]/g, '').trim();
+        const idMatch = raw.match(/\d{15,25}/);
+        if (!idMatch) {
+          results.push('Cần user ID để unban.');
+          continue;
+        }
+        await guild.members.unban(idMatch[0], String(args.reason || `Assistant command by ${message.author.tag}`).slice(0, 512));
+        results.push(`Đã unban user ${idMatch[0]}.`);
+      } else if (type === 'remove_timeout') {
+        const member = await findMember(guild, args.member || args.user || args.userId);
+        if (!member?.timeout) {
+          results.push('Không tìm thấy member để gỡ timeout.');
+          continue;
+        }
+        await member.timeout(null, String(args.reason || `Assistant command by ${message.author.tag}`).slice(0, 512));
+        results.push(`Đã gỡ timeout cho ${member.displayName}.`);
+      } else if (type === 'list_bans') {
+        if (!guild) {
+          results.push('Không thể liệt kê ban ngoài server.');
+          continue;
+        }
+        const bans = await guild.bans.fetch().catch(() => null);
+        if (!bans?.size) {
+          results.push('Server không có ban hoặc bot thiếu quyền xem ban.');
+          continue;
+        }
+        const lines = [...bans.values()]
+          .slice(0, Math.min(Math.max(Number(args.limit) || 15, 1), 30))
+          .map(ban => `- ${ban.user.tag} (${ban.user.id})${ban.reason ? `: ${truncateLine(ban.reason, 80)}` : ''}`);
+        results.push(`Danh sách ban (${bans.size}):\n${lines.join('\n')}`);
+      } else if (type === 'set_nickname') {
+        const member = await findMember(guild, args.member || args.user || args.userId);
+        if (!member) {
+          results.push('Không tìm thấy member để đổi nickname.');
+          continue;
+        }
+        const nick = args.nickname === null || args.nickname === '' || args.clear
+          ? null
+          : String(args.nickname || args.nick || args.name || '').slice(0, 32);
+        await member.setNickname(nick, `Assistant command by ${message.author.tag}`);
+        results.push(nick
+          ? `Đã đổi nickname của ${member.user.username} thành "${nick}".`
+          : `Đã xóa nickname của ${member.user.username}.`);
+      } else if (type === 'dm_member') {
+        const member = await findMember(guild, args.member || args.user || args.userId);
+        const content = String(args.content || args.message || args.text || '').trim();
+        if (!member || !content) {
+          results.push('dm_member cần member và content.');
+          continue;
+        }
+        const sent = await member.send(content.slice(0, 1900)).catch(() => null);
+        results.push(sent
+          ? `Đã DM ${member.displayName}.`
+          : `Không gửi được DM cho ${member.displayName} (có thể họ tắt DM).`);
+      } else if (type === 'edit_message') {
+        const targetMessage = await findMessageForAction(message, guild, args);
+        if (!targetMessage) {
+          results.push('Không tìm thấy tin nhắn để sửa (cần messageId/URL hoặc reply).');
+          continue;
+        }
+        if (targetMessage.author?.id !== message.client.user.id) {
+          results.push('Bot chỉ sửa được tin nhắn do chính bot gửi.');
+          continue;
+        }
+        const content = args.content !== undefined ? String(args.content).slice(0, 2000) : undefined;
+        const embeds = args.title || args.description
+          ? [buildAssistantEmbed(args)]
+          : undefined;
+        if (content === undefined && !embeds) {
+          results.push('edit_message cần content hoặc title/description embed.');
+          continue;
+        }
+        await targetMessage.edit({
+          content: content !== undefined ? content : targetMessage.content,
+          embeds: embeds || targetMessage.embeds,
+        });
+        results.push(`Đã sửa tin nhắn ${targetMessage.id}.`);
+      } else if (type === 'delete_message') {
+        const targetMessage = await findMessageForAction(message, guild, args);
+        if (!targetMessage) {
+          results.push('Không tìm thấy tin nhắn để xóa.');
+          continue;
+        }
+        await targetMessage.delete();
+        results.push(`Đã xóa tin nhắn ${targetMessage.id}.`);
+      } else if (type === 'set_thread_tags') {
+        let thread = message.channel?.isThread?.() ? message.channel : null;
+        if (args.thread || args.threadId || args.channel) {
+          const found = await findChannel(guild, args.thread || args.threadId || args.channel);
+          if (found?.isThread?.()) thread = found;
+        }
+        if (!thread?.isThread?.()) {
+          results.push('Không tìm thấy thread để gán tag.');
+          continue;
+        }
+        const parent = thread.parent || await guild.channels.fetch(thread.parentId).catch(() => null);
+        if (!parent?.availableTags) {
+          results.push('Thread không thuộc forum có tag.');
+          continue;
+        }
+        const tagIds = resolveForumTagIds(parent, args.tags || args.tag || [], { fallback: false });
+        if (!tagIds.length) {
+          results.push('Không khớp tag forum nào. Kiểm tra tên tag.');
+          continue;
+        }
+        await thread.setAppliedTags(tagIds, `Assistant command by ${message.author.tag}`);
+        results.push(`Đã gán tag [${describeForumTags(parent, tagIds)}] cho thread ${thread.name}.`);
+      } else if (type === 'list_threads') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        if (!channel?.threads?.fetchActive) {
+          results.push('Kênh không hỗ trợ list threads.');
+          continue;
+        }
+        const active = await channel.threads.fetchActive().catch(() => ({ threads: new Map() }));
+        const archived = await channel.threads.fetchArchived({ limit: Math.min(Number(args.limit) || 15, 50) }).catch(() => ({ threads: new Map() }));
+        const activeLines = [...(active.threads?.values?.() || [])].slice(0, 20).map(t => `- [active] ${t.name} (${t.id})`);
+        const archivedLines = [...(archived.threads?.values?.() || [])].slice(0, 15).map(t => `- [archived] ${t.name} (${t.id})`);
+        const lines = [...activeLines, ...archivedLines];
+        results.push(lines.length
+          ? `Threads trong #${channel.name}:\n${lines.join('\n')}`
+          : `Không có thread nào trong #${channel.name}.`);
+      } else if (type === 'unarchive_thread' || type === 'lock_thread' || type === 'unlock_thread') {
+        let target = message.channel?.isThread?.() ? message.channel : null;
+        if (args.thread || args.threadId || args.name) {
+          const found = await findChannel(guild, args.thread || args.threadId || args.name);
+          if (found?.isThread?.()) target = found;
+        }
+        if (!target?.isThread?.()) {
+          results.push('Không tìm thấy thread.');
+          continue;
+        }
+        if (type === 'unarchive_thread') {
+          await target.setArchived(false, `Assistant command by ${message.author.tag}`);
+          results.push(`Đã unarchive thread "${target.name}".`);
+        } else if (type === 'lock_thread') {
+          await target.setLocked(true, `Assistant command by ${message.author.tag}`);
+          results.push(`Đã khóa thread "${target.name}".`);
+        } else {
+          await target.setLocked(false, `Assistant command by ${message.author.tag}`);
+          results.push(`Đã mở khóa thread "${target.name}".`);
+        }
+      } else if (type === 'mark_thread_solved') {
+        let thread = message.channel?.isThread?.() ? message.channel : null;
+        if (args.thread || args.threadId) {
+          const found = await findChannel(guild, args.thread || args.threadId);
+          if (found?.isThread?.()) thread = found;
+        }
+        if (!thread?.isThread?.()) {
+          results.push('mark_thread_solved cần chạy trong thread Q&A hoặc chỉ định thread.');
+          continue;
+        }
+        const outcome = await markThreadSolved(thread, message.author);
+        results.push(outcome || 'Không đánh dấu được (thiếu tag Chưa/Đã giải quyết trên forum).');
+      } else if (type === 'bulk_lock_channels') {
+        if (!guild) {
+          results.push('Không thể bulk lock ngoài server.');
+          continue;
+        }
+        const names = Array.isArray(args.channels) ? args.channels : String(args.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (!names.length) {
+          results.push('bulk_lock_channels cần channels: ["tên1","tên2"] hoặc danh sách cách nhau bởi dấu phẩy.');
+          continue;
+        }
+        const everyoneRole = guild.roles.everyone;
+        const locked = [];
+        const failed = [];
+        for (const name of names.slice(0, 20)) {
+          const channel = await findChannel(guild, name);
+          if (!channel?.permissionOverwrites?.edit) {
+            failed.push(name);
+            continue;
+          }
+          try {
+            await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: false }, {
+              reason: `Assistant bulk lock by ${message.author.tag}`,
+            });
+            locked.push(channel.name);
+          } catch {
+            failed.push(name);
+          }
+        }
+        results.push(`Bulk lock xong: ${locked.length} kênh [${locked.join(', ')}]${failed.length ? `; lỗi: ${failed.join(', ')}` : ''}.`);
+      } else if (type === 'send_roles_panel' || type === 'send_visa_panel' || type === 'send_rules_panel') {
+        const channel = await findChannel(guild, args.channel || args.channel_name || args.channelId) || message.channel;
+        if (!channel?.send) {
+          results.push('Không tìm thấy kênh để gửi panel.');
+          continue;
+        }
+        const payload = type === 'send_roles_panel'
+          ? buildRolesPanelPayload()
+          : type === 'send_visa_panel'
+            ? buildVisaPanelPayload()
+            : buildRulesPanelPayload(args);
+        await channel.send(payload);
+        results.push(`Đã gửi ${type.replace('send_', '').replace('_', ' ')} vào #${channel.name}.`);
       } else if (type === 'kick_member' || type === 'ban_member') {
         const member = await findMember(guild, args.member || args.user || args.userId);
         if (!member) {
@@ -1080,11 +1581,16 @@ async function executeAssistantActions({ message, actions = [], context }) {
 }
 
 module.exports = {
+  ACTION_RISK,
   executeAssistantActions,
   findChannel,
+  getActionRisk,
   getActionType,
+  getMaxActions,
+  isAutoWriteEnabled,
   isDangerousAction,
   isAdminMessage,
   normalizeChannelName,
+  parsePermissionFlagList,
   resolveForumTagIds,
 };

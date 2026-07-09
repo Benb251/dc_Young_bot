@@ -65,10 +65,32 @@ Assistant moderation:
 - `ASSISTANT_WARNING_FILE`, default `Discord_bot/data/assistant_warnings.json`
 - `ASSISTANT_MAX_WARNINGS`, default `1000`
 
-Assistant safety:
+Assistant safety / risk tiers:
 
 - `ASSISTANT_CONFIRM_TTL_MS`, default `60000`
 - `ASSISTANT_AUDIT_CHANNEL_ID`, optional channel ID where assistant action audits are sent
+- `ASSISTANT_AUTO_WRITE`, default `true`. When `true`, **write** actions run immediately for admins. When `false`, write actions also require confirmation. **critical** actions always require confirmation.
+- `ASSISTANT_MAX_ACTIONS`, default `10` (max `20`) — max tool actions per model turn.
+
+### Risk tiers
+
+| Tier | Behavior | Examples |
+|------|----------|----------|
+| `safe` | Execute immediately | list/inspect/diagnose/fetch/status |
+| `write` | Execute immediately if `ASSISTANT_AUTO_WRITE=true` | send_message, create_channel, assign_role, pin, panels |
+| `critical` | Always stage → admin replies `xác nhận` / `hủy` | delete_channel, ban/kick/unban, set_channel_permissions, edit_role, bulk_lock, delete_messages, publish_url_to_forum |
+
+If a batch contains any critical action, the **entire batch** is staged for confirmation.
+
+### Re-invite bot (Discord permissions)
+
+`diagnose_permissions` prints an OAuth invite URL with recommended bot permissions:
+
+ViewChannel, SendMessages, ReadMessageHistory, EmbedLinks, AttachFiles, AddReactions, UseExternalEmojis, ManageMessages, ManageChannels, ManageRoles, ManageThreads, CreatePublicThreads, CreatePrivateThreads, ManageNicknames, KickMembers, BanMembers, ModerateMembers.
+
+After re-invite: place the bot role **above** any role it must assign/edit.
+
+See also `TOOL_GAP_CHECKLIST.md` for remaining gaps vs one-shot setup scripts.
 
 `Discord_bot/data/` is ignored by git because it may contain private server memory.
 
@@ -77,9 +99,9 @@ Assistant safety:
 - Normal members can mention the bot to ask questions naturally.
 - The owner can DM the bot with natural language commands.
 - Admins can mention the bot in-server and ask it to perform supported admin actions.
-- The assistant asks the model for a JSON decision, executes allowed low-risk tools, then reports the result.
+- The assistant asks the model for a JSON decision, executes allowed tools by risk tier, then reports the result.
 - AI calls use the primary model first, then fallback models if configured, with bounded timeout and retry handling.
-- Server-changing actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
+- Critical (and write when auto-write is off) actions are staged first. Reply with `xác nhận` within the TTL to run them, or `hủy` to cancel.
 - After useful turns, the assistant can extract durable facts into memory while filtering secrets and low-confidence guesses.
 - Reminders are persisted to disk and delivered from the gateway loop, so pending reminders survive a container restart.
 - When enabled, onboarding can welcome new members, DM them, and assign one starter role through `guildMemberAdd`.
@@ -112,20 +134,36 @@ Assistant safety:
 - `list_tasks`: list open, done, cancelled, or all tasks.
 - `complete_task` / `cancel_task`: update a task by ID prefix.
 - `create_text_channel`: create a text channel, optionally under a category.
+- `create_category`: create a channel category.
+- `create_forum_channel`: create a forum channel with optional tags and parent category.
+- `move_channel`: move a channel into a category (or root with `category: none`).
+- `delete_channel`: delete a channel/category (**critical**). Non-empty categories refuse unless handled carefully.
+- `set_channel_permissions`: set allow/deny overwrites for @everyone, a role, or member (**critical**). `clear=true` removes overwrite.
 - `create_thread`: create a thread in a text/announcement channel or a post in a forum channel.
 - `rename_channel`: rename a channel.
 - `set_channel_topic`: update a text channel topic.
 - `set_slowmode`: set or clear channel slowmode.
 - `lock_channel` / `unlock_channel`: deny or restore `@everyone` send permission in a channel.
+- `bulk_lock_channels`: lock many channels in one confirmable action (**critical**).
 - `pin_message` / `unpin_message`: pin or unpin a referenced message, message URL, or message ID.
-- `rename_thread` / `archive_thread`: manage the current or named thread.
-- `assign_role` / `remove_role`: manage member roles by mention, ID, or name.
+- `edit_message`: edit a bot-authored message by reply/URL/id.
+- `delete_message`: delete one message by reply/URL/id.
+- `rename_thread` / `archive_thread` / `unarchive_thread` / `lock_thread` / `unlock_thread`: manage threads.
+- `set_thread_tags`: apply forum tags to a thread.
+- `list_threads`: list active/archived threads in a channel.
+- `mark_thread_solved`: swap Q&A forum tags to "Đã giải quyết".
+- `assign_role` / `remove_role`: manage member roles by mention, ID, or name (hierarchy checked).
 - `create_role`: create a new role.
-- `timeout_member`: timeout a member for a bounded number of minutes.
+- `edit_role`: rename/color/hoist/mentionable/permissions for a role (**critical**).
+- `timeout_member` / `remove_timeout`: timeout or clear timeout.
+- `set_nickname`: set or clear a member nickname.
+- `dm_member`: DM a member (soft-fail if closed DMs).
 - `warn_member`: record a moderation warning and optionally DM the member.
 - `list_warnings`: list active warnings, optionally for one member.
 - `clear_warning`: clear an active warning by ID prefix.
-- `kick_member` / `ban_member`: remove abusive members when clearly requested by an admin.
+- `kick_member` / `ban_member` / `unban_member`: moderation removals (**critical** for ban/kick/unban).
+- `list_bans`: list banned users.
+- `send_roles_panel` / `send_visa_panel` / `send_rules_panel`: post community panels (buttons use same custom_ids as cf-bot; gateway handles clicks when this bot sent the message).
 - `remember`: store a scoped memory fact.
 - `recall_memory`: search stored memory.
 - `list_memory`: list visible memory facts with short IDs.

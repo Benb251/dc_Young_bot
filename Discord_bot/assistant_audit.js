@@ -24,6 +24,21 @@ function describeAction(action) {
   if (args.count) {
     labelParts.push(`count=${args.count}`);
   }
+  if (args.category || args.parent || args.parentId) {
+    labelParts.push(`category=${args.category || args.parent || args.parentId}`);
+  }
+  if (args.target) {
+    labelParts.push(`target=${args.target}`);
+  }
+  if (args.allow) {
+    labelParts.push(`allow=${Array.isArray(args.allow) ? args.allow.join('|') : args.allow}`);
+  }
+  if (args.deny) {
+    labelParts.push(`deny=${Array.isArray(args.deny) ? args.deny.join('|') : args.deny}`);
+  }
+  if (args.nickname || args.nick) {
+    labelParts.push(`nick=${args.nickname || args.nick}`);
+  }
 
   return truncate(labelParts.join(' '), 220);
 }
