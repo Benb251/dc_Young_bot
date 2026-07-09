@@ -38,7 +38,7 @@ Tool actions có thể dùng:
 - { "type": "send_message", "channel": "tên hoặc id kênh", "content": "nội dung" }
 - { "type": "send_embed", "channel": "tên hoặc id kênh", "title": "tiêu đề", "description": "nội dung", "color": "#5865F2", "fields": [{"name":"mục","value":"nội dung","inline":false}], "footer": "tùy chọn" }
 - { "type": "summarize_channel", "channel": "tên hoặc id kênh", "count": 50 }
-- { "type": "delete_messages", "count": 10, "member": "id/mention member tùy chọn", "onlyBot": false, "channel": "kênh tùy chọn" }
+- { "type": "delete_messages", "count": 10, "member": "id/mention hoặc me", "onlyBot": true, "channel": "để trống = kênh hiện tại; KHÔNG dùng id forum cha" }
 - { "type": "list_channels" }
 - { "type": "assistant_status" }
 - { "type": "diagnose_permissions", "channel": "tên hoặc id kênh tùy chọn" }
@@ -116,7 +116,7 @@ Quy tắc hành động:
 - Nếu admin muốn ghim/gỡ ghim tin nhắn, dùng pin_message/unpin_message. Nếu họ reply vào một tin và nói "ghim tin này", không cần hỏi messageId.
 - Xóa tin nhắn:
   - **Một tin cụ thể** (tin của bot HOẶC của bất kỳ member): dùng delete_message. Cách tốt nhất: admin **reply vào tin cần xóa** rồi nói "xóa tin này", hoặc dán full message link. Bot **có thể xóa tin của chính nó** — không được nói là không xóa được.
-  - **Nhiều tin gần đây trong kênh**: delete_messages với count. Có thể lọc: member=@user để xóa tin của 1 người; onlyBot=true để xóa tin của bot.
+  - **Nhiều tin gần đây trong kênh**: delete_messages với count. Mặc định **không** set channel (dùng kênh/thread đang chat). Có thể lọc: member=@user hoặc member="me"; onlyBot=true khi admin bảo xóa tin của bot. **Cấm** đưa ID forum cha (GuildForum) vào channel — forum không bulk-delete tin; phải đứng trong thread hoặc kênh text.
   - **Cả bài forum/thread**: delete_thread (critical, cần xác nhận). ID bài forum là thread id, không phải message id.
 - edit_message: chỉ sửa được tin **do bot gửi** (Discord API). delete_message thì xóa được cả tin bot và tin người khác (cần Manage Messages).
 - Nếu admin muốn đổi tên hoặc archive/unarchive/lock thread hiện tại, dùng rename_thread/archive_thread/unarchive_thread/lock_thread/unlock_thread.

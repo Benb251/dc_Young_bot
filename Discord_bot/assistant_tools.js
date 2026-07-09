@@ -1230,24 +1230,64 @@ async function executeAssistantActions({ message, actions = [], context }) {
         }
       } else if (type === 'delete_messages') {
         const count = Math.min(Math.max(Number(args.count) || 10, 1), 100);
-        const channel = args.channel || args.channel_name || args.channelId
-          ? await findChannel(guild, args.channel || args.channel_name || args.channelId)
-          : message.channel;
+
+        // Resolve channel: prefer explicit arg, but NEVER use a forum parent (no .messages).
+        // Fall back to the channel where the admin typed the command.
+        let channel = null;
+        const requestedChannel = args.channel || args.channel_name || args.channelId;
+        if (requestedChannel) {
+          channel = await findChannel(guild, requestedChannel);
+        }
+        if (!channel?.messages && message.channel?.messages) {
+          channel = message.channel;
+        }
+        if (channel && (channel.type === ChannelType.GuildForum || channel.type === ChannelType.GuildCategory)) {
+          // Forum/category cannot bulk-delete messages; use current text/thread if possible.
+          if (message.channel?.messages && message.channel.id !== channel.id) {
+            channel = message.channel;
+          } else {
+            results.push(
+              `Không xóa tin trực tiếp trên forum/category <#${channel.id}>. `
+              + 'Hãy chạy lệnh **trong kênh text hoặc trong thread/bài**, không đưa ID forum cha.'
+            );
+            continue;
+          }
+        }
         if (!channel?.messages) {
-          results.push('Không tìm thấy kênh để xóa tin.');
+          results.push(
+            'Không tìm thấy kênh text/thread để xóa tin. '
+            + 'Đứng trong kênh cần dọn rồi ra lệnh (không cần channel id), '
+            + 'hoặc đưa ID/mention kênh **text** (không phải forum cha).'
+          );
           continue;
         }
 
-        const onlyBot = Boolean(args.onlyBot || args.botOnly || args.self
-          || /bot|chinh no|của bot|cua bot/i.test(String(args.filter || args.target || '')));
+        const filterText = String(args.filter || args.target || args.scope || args.who || '').toLowerCase();
+        const onlyBot = Boolean(
+          args.onlyBot === true
+          || args.botOnly === true
+          || args.self === true
+          || /^(bot|self)$/i.test(String(args.onlyBot || args.botOnly || ''))
+          || /của bot|cua bot|tin bot|của mày|cua may|chinh bot|chính bot/.test(filterText)
+        );
+
         let memberId = null;
-        if (!onlyBot && (args.member || args.user || args.userId || args.author)) {
-          const member = await findMember(guild, args.member || args.user || args.userId || args.author);
-          memberId = member?.id || null;
-          if (!memberId) {
-            results.push('Không tìm thấy thành viên để xóa tin theo filter.');
-            continue;
+        if (!onlyBot && (args.member || args.user || args.userId || args.author || args.me)) {
+          const memberRef = args.member || args.user || args.userId || args.author;
+          if (args.me === true || memberRef === 'me' || memberRef === 'toi' || memberRef === 'tôi') {
+            memberId = message.author.id;
+          } else {
+            const member = await findMember(guild, memberRef);
+            memberId = member?.id || null;
+            if (!memberId) {
+              results.push('Không tìm thấy thành viên để xóa tin theo filter.');
+              continue;
+            }
           }
+        }
+        // "của m" / của tôi without structured member field
+        if (!onlyBot && !memberId && /của m\b|cua m\b|của tôi|cua toi|tin của tôi|tin cua toi/.test(filterText)) {
+          memberId = message.author.id;
         }
 
         const purge = await deleteMessagesInChannel(channel, {
@@ -1261,19 +1301,20 @@ async function executeAssistantActions({ message, actions = [], context }) {
           results.push(purge.error);
           continue;
         }
+        const channelLabel = channel.name || channel.id;
         if (!purge.deleted) {
           results.push(onlyBot
-            ? `Không tìm thấy tin nào của bot trong #${channel.name} (trong phạm vi quét gần đây).`
+            ? `Không tìm thấy tin nào của bot trong #${channelLabel} (trong ~100 tin quét gần đây).`
             : memberId
-              ? `Không tìm thấy tin gần đây của member đó trong #${channel.name}.`
-              : `Không xóa được tin nào trong #${channel.name}.`);
+              ? `Không tìm thấy tin gần đây của <@${memberId}> trong #${channelLabel}.`
+              : `Không xóa được tin nào trong #${channelLabel}.`);
           continue;
         }
         results.push(onlyBot
-          ? `Đã xóa ${purge.deleted} tin của bot trong #${channel.name}.`
+          ? `Đã xóa ${purge.deleted} tin của bot trong #${channelLabel}.`
           : memberId
-            ? `Đã xóa ${purge.deleted} tin gần đây của <@${memberId}> trong #${channel.name}.`
-            : `Đã xóa ${purge.deleted} tin gần nhất trong #${channel.name}.`);
+            ? `Đã xóa ${purge.deleted} tin gần đây của <@${memberId}> trong #${channelLabel}.`
+            : `Đã xóa ${purge.deleted} tin gần nhất trong #${channelLabel}.`);
       } else if (type === 'create_category') {
         if (!guild) {
           results.push('Không thể kết nối tới server để tạo category.');
