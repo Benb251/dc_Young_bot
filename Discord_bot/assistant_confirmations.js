@@ -1,9 +1,4 @@
 const crypto = require('crypto');
-const {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require('discord.js');
 
 const DEFAULT_TTL_MS = 60_000;
 const MAX_TTL_MS = 10 * 60_000;
@@ -179,41 +174,55 @@ function isConfirmButtonId(customId) {
   return Boolean(parseConfirmButtonId(customId));
 }
 
+/**
+ * Raw Discord component payload (no emoji) — most reliable for interaction custom_id.
+ * Type 1 = ACTION_ROW, type 2 = BUTTON, style 3 = SUCCESS, 2 = SECONDARY.
+ */
 function buildConfirmationComponents(token) {
   const safeToken = String(token || '').slice(0, 16);
   return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${CONFIRM_CUSTOM_PREFIX}:accept:${safeToken}`)
-        .setLabel('Xác nhận')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('✅'),
-      new ButtonBuilder()
-        .setCustomId(`${CONFIRM_CUSTOM_PREFIX}:cancel:${safeToken}`)
-        .setLabel('Hủy')
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji('❌'),
-    ),
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 3,
+          custom_id: `${CONFIRM_CUSTOM_PREFIX}:accept:${safeToken}`,
+          label: 'Xác nhận',
+        },
+        {
+          type: 2,
+          style: 2,
+          custom_id: `${CONFIRM_CUSTOM_PREFIX}:cancel:${safeToken}`,
+          label: 'Hủy',
+        },
+      ],
+    },
   ];
 }
 
 function disabledConfirmationComponents(token, chosen = null) {
   const safeToken = String(token || '0000000000000000').slice(0, 16);
   return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${CONFIRM_CUSTOM_PREFIX}:accept:${safeToken}:done`)
-        .setLabel(chosen === 'accept' ? 'Đã xác nhận' : 'Xác nhận')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('✅')
-        .setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId(`${CONFIRM_CUSTOM_PREFIX}:cancel:${safeToken}:done`)
-        .setLabel(chosen === 'cancel' ? 'Đã hủy' : 'Hủy')
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji('❌')
-        .setDisabled(true),
-    ),
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 3,
+          custom_id: `${CONFIRM_CUSTOM_PREFIX}:accept:${safeToken}:done`,
+          label: chosen === 'accept' ? 'Đã xác nhận' : 'Xác nhận',
+          disabled: true,
+        },
+        {
+          type: 2,
+          style: 2,
+          custom_id: `${CONFIRM_CUSTOM_PREFIX}:cancel:${safeToken}:done`,
+          label: chosen === 'cancel' ? 'Đã hủy' : 'Hủy',
+          disabled: true,
+        },
+      ],
+    },
   ];
 }
 

@@ -230,6 +230,12 @@ async function main() {
   if (!components?.length || !components[0].components?.length) {
     throw new Error('confirmation buttons missing');
   }
+  if (components[0].components[0].custom_id !== `assistant_confirm:accept:${pending.token}`) {
+    throw new Error('confirmation button custom_id mismatch');
+  }
+  if (components[0].components[0].emoji) {
+    throw new Error('confirmation buttons should not use emoji (interaction reliability)');
+  }
   if (confirmations.getPendingConfirmationByToken(pending.token)?.token !== pending.token) {
     throw new Error('pending by token lookup failed');
   }

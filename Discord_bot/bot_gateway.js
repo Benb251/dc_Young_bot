@@ -100,7 +100,8 @@ client.once('ready', () => {
 
 // Import helper AI
 const { getAIChatResponse, classifyCrosspostTopic } = require('./ai_helper.js');
-const { handleAssistantMessage, handleAssistantConfirmationButton } = require('./assistant_brain.js');
+const { handleAssistantMessage } = require('./assistant_brain.js');
+const { handleAssistantConfirmationButton } = require('./assistant_confirm_handler.js');
 const {
   getPendingConfirmationFlexible,
   isCancelMessage,
@@ -108,9 +109,8 @@ const {
 } = require('./assistant_confirmations.js');
 const { handleGuildMemberAdd } = require('./assistant_onboarding.js');
 const { startReminderLoop } = require('./assistant_reminders.js');
-
-const { getStatusTagIds, markThreadSolved } = require('./assistant_qa_tags.js');
 const { handlePanelButtonInteraction } = require('./assistant_panels.js');
+const { getStatusTagIds, markThreadSolved } = require('./assistant_qa_tags.js');
 
 // ── 1. Event: Thread (Post) Created ────────────────────────
 client.on('threadCreate', async (thread) => {
@@ -265,10 +265,14 @@ async function markThreadAsSolved(thread, triggerUser) {
 
 client.on('interactionCreate', async (interaction) => {
   try {
+    if (interaction.isButton?.()) {
+      console.log(`[INTERACTION] button customId=${interaction.customId} user=${interaction.user?.id}`);
+    }
     if (await handleAssistantConfirmationButton(interaction)) return;
     const handled = await handlePanelButtonInteraction(interaction);
-    if (!handled && interaction.isButton?.()) {
-      // Unknown buttons ignored
+    if (!handled && interaction.isButton?.() && interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+      // Unknown button — still ack so Discord does not show "interaction failed"
+      await interaction.reply({ content: 'Nút này không còn được hỗ trợ.', ephemeral: true }).catch(() => null);
     }
   } catch (error) {
     console.error('[INTERACTION] button failed:', error);
